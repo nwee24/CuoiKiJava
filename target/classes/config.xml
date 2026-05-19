@@ -1,0 +1,23 @@
+<config>
+  <server>
+    <host>localhost</host>
+    <port>9999</port>
+    <keystore>keystore.jks</keystore>
+    <keystorePassword>changeit</keystorePassword>
+    <threadPoolSize>50</threadPoolSize>
+  </server>
+  <database>
+    <url>jdbc:postgresql://localhost:5432/auction_db</url>
+    <username>postgres</username>
+    <password>123456</password>
+  </database>
+  <auction>
+    <defaultDurationSeconds>180</defaultDurationSeconds>
+    <minBidIncrement>10000</minBidIncrement>
+    <extensionSeconds>30</extensionSeconds>
+    <extensionThresholdSeconds>15</extensionThresholdSeconds>
+    <commissionPercent>3.5</commissionPercent>
+    <fixedFee>50000</fixedFee>
+    <penaltyPercent>10</penaltyPercent>
+  </auction>
+</config>
