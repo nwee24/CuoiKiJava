@@ -1,150 +1,129 @@
 package client;
 
 import shared.MessageType;
-import javax.imageio.ImageIO;
 import javax.swing.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.border.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ProductSubmitPanel extends JPanel {
-    private JTextField txtName;
-    private JTextArea txtDesc;
-    private JTextField txtPrice;
-    private JLabel lblImagePreview;
-    private JButton btnSelectImage;
-    private JButton btnSubmit;
+/**
+ * ProductSubmitPanel - Quản lý sản phẩm với tabs: Gửi Yêu Cầu | Đã Duyệt | Đã Bán | Từ Chối
+ */
+public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageListener {
     
-    private String base64Image = "";
-    private String targetModUsername = "";
+    private JTabbedPane tabbedPane;
+    private DefaultTableModel modelApproved, modelSold, modelRejected;
+    private ProductSubmitForm submitForm;
 
     public ProductSubmitPanel() {
         setLayout(new BorderLayout());
+        setBackground(UITheme.BG_CARD);
         
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        
-        gbc.gridx = 0; gbc.gridy = 0; formPanel.add(new JLabel("Tên sản phẩm:"), gbc);
-        gbc.gridx = 1; txtName = new JTextField(20); formPanel.add(txtName, gbc);
-        
-        gbc.gridx = 0; gbc.gridy = 1; formPanel.add(new JLabel("Mô tả chi tiết:"), gbc);
-        gbc.gridx = 1; 
-        txtDesc = new JTextArea(4, 20);
-        txtDesc.setLineWrap(true);
-        formPanel.add(new JScrollPane(txtDesc), gbc);
-        
-        gbc.gridx = 0; gbc.gridy = 2; formPanel.add(new JLabel("Giá khởi điểm:"), gbc);
-        gbc.gridx = 1; txtPrice = new JTextField(20); formPanel.add(txtPrice, gbc);
-        
-        gbc.gridx = 0; gbc.gridy = 3; formPanel.add(new JLabel("Hình ảnh:"), gbc);
-        gbc.gridx = 1; 
-        JPanel imgPanel = new JPanel(new BorderLayout());
-        btnSelectImage = new JButton("Chọn tệp...");
-        lblImagePreview = new JLabel("Chưa chọn ảnh");
-        lblImagePreview.setPreferredSize(new Dimension(150, 150));
-        lblImagePreview.setHorizontalAlignment(SwingConstants.CENTER);
-        lblImagePreview.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-        
-        imgPanel.add(btnSelectImage, BorderLayout.NORTH);
-        imgPanel.add(lblImagePreview, BorderLayout.CENTER);
-        formPanel.add(imgPanel, gbc);
-        
-        add(formPanel, BorderLayout.CENTER);
-        
-        btnSubmit = new JButton("Gửi sản phẩm cho Mod");
-        btnSubmit.setFont(new Font("Arial", Font.BOLD, 14));
-        btnSubmit.setPreferredSize(new Dimension(0, 40));
-        add(btnSubmit, BorderLayout.SOUTH);
-        
-        btnSelectImage.addActionListener(e -> selectImage());
-        btnSubmit.addActionListener(e -> submitProduct());
+        NetworkClient.getInstance().addListener(this);
+        buildUI();
+        loadProducts();
     }
-    
+
+    private void buildUI() {
+        tabbedPane = new JTabbedPane();
+        tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        tabbedPane.setBackground(UITheme.BG_CARD);
+        
+        // Tab 1: Gửi yêu cầu mới
+        submitForm = new ProductSubmitForm();
+        tabbedPane.addTab("📝 Gửi Yêu Cầu", submitForm);
+        
+        // Tab 2, 3, 4: Danh sách sản phẩm
+        tabbedPane.addTab("✅ Đã Duyệt", buildProductListTab("APPROVED"));
+        tabbedPane.addTab("💰 Đã Bán", buildProductListTab("SOLD"));
+        tabbedPane.addTab("❌ Từ Chối", buildProductListTab("REJECTED"));
+        
+        add(tabbedPane, BorderLayout.CENTER);
+    }
+
+    private JPanel buildProductListTab(String status) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(UITheme.BG_CARD);
+        
+        String[] columns = {"ID", "Tên Sản Phẩm", "Giá Khởi Điểm", "Trạng Thái"};
+        DefaultTableModel model = new DefaultTableModel(columns, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+        };
+        
+        JTable table = new JTable(model);
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        table.setRowHeight(36);
+        table.setBackground(UITheme.BG_CARD);
+        table.setSelectionBackground(new Color(255, 247, 237));
+        table.setSelectionForeground(UITheme.ACCENT_DARK);
+        table.setGridColor(UITheme.BORDER);
+        table.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
+        table.getTableHeader().setBackground(new Color(249, 250, 251));
+        
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setBorder(new LineBorder(UITheme.BORDER, 1));
+        panel.add(scroll, BorderLayout.CENTER);
+        
+        if ("APPROVED".equals(status)) {
+            modelApproved = model;
+        } else if ("SOLD".equals(status)) {
+            modelSold = model;
+        } else if ("REJECTED".equals(status)) {
+            modelRejected = model;
+        }
+        
+        return panel;
+    }
+
+    private void loadProducts() {
+        NetworkClient.getInstance().sendMessage(MessageType.GET_MY_PRODUCTS, new HashMap<>());
+    }
+
     public void setTargetMod(String modUsername) {
-        this.targetModUsername = modUsername;
-        btnSubmit.setText("Gửi sản phẩm cho " + modUsername);
+        submitForm.setTargetMod(modUsername);
     }
 
-    private void selectImage() {
-        JFileChooser chooser = new JFileChooser();
-        FileNameExtensionFilter filter = new FileNameExtensionFilter("Hình ảnh (JPG, PNG)", "jpg", "jpeg", "png");
-        chooser.setFileFilter(filter);
-        int returnVal = chooser.showOpenDialog(this);
-        if(returnVal == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            if (file.length() > 5 * 1024 * 1024) {
-                JOptionPane.showMessageDialog(this, "Ảnh quá lớn. Vui lòng chọn tệp nhỏ hơn 5MB.");
-                return;
+    @Override
+    public void onMessage(MessageType type, Map<String, String> data) {
+        SwingUtilities.invokeLater(() -> {
+            if (type == MessageType.GET_MY_PRODUCTS) {
+                updateProductTables(data.get("products"));
+            } else if (type == MessageType.SUCCESS) {
+                String msg = data.get("message");
+                if (msg != null && msg.contains("sản phẩm")) {
+                    loadProducts(); // Refresh
+                }
             }
-            try {
-                BufferedImage originalImage = ImageIO.read(file);
-                // Tạo ảnh thu nhỏ 300x300 với Graphics2D Antialiasing
-                BufferedImage resizedImg = new BufferedImage(300, 300, BufferedImage.TYPE_INT_RGB);
-                Graphics2D g2 = resizedImg.createGraphics();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                g2.drawImage(originalImage, 0, 0, 300, 300, null);
-                g2.dispose();
-                
-                // Mã hoá thành Base64
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                ImageIO.write(resizedImg, "jpg", baos);
-                byte[] imageBytes = baos.toByteArray();
-                base64Image = Base64.getEncoder().encodeToString(imageBytes);
-                
-                // Hiển thị preview thu nhỏ hơn (150x150) cho vừa form
-                Image preview = resizedImg.getScaledInstance(150, 150, Image.SCALE_SMOOTH);
-                lblImagePreview.setIcon(new ImageIcon(preview));
-                lblImagePreview.setText("");
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Lỗi đọc ảnh: " + ex.getMessage());
-            }
-        }
+        });
     }
 
-    private void submitProduct() {
-        if (targetModUsername == null || targetModUsername.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Vui lòng chọn một Moderator từ danh sách.");
-            return;
+    private void updateProductTables(String productsStr) {
+        modelApproved.setRowCount(0);
+        modelSold.setRowCount(0);
+        modelRejected.setRowCount(0);
+        
+        if (productsStr != null && !productsStr.isEmpty()) {
+            for (String prodStr : productsStr.split("\\|")) {
+                String[] parts = prodStr.split(",", 5);
+                if (parts.length >= 4) {
+                    String id = parts[0];
+                    String name = parts[1];
+                    String price = parts[2];
+                    String status = parts[3];
+                    
+                    Object[] row = {id, name, price + " VND", status};
+                    
+                    if ("APPROVED".equals(status)) {
+                        modelApproved.addRow(row);
+                    } else if ("SOLD".equals(status)) {
+                        modelSold.addRow(row);
+                    } else if ("REJECTED".equals(status)) {
+                        modelRejected.addRow(row);
+                    }
+                }
+            }
         }
-        String name = txtName.getText().trim();
-        String desc = txtDesc.getText().trim();
-        String price = txtPrice.getText().trim();
-        
-        if (name.isEmpty() || price.isEmpty() || base64Image.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Vui lòng nhập tên, giá và chọn ảnh.");
-            return;
-        }
-        
-        try {
-            Long.parseLong(price);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "Giá tiền không hợp lệ.");
-            return;
-        }
-
-        Map<String, String> data = new HashMap<>();
-        data.put("modUsername", targetModUsername);
-        data.put("productName", name);
-        data.put("description", desc);
-        data.put("startingPrice", price);
-        data.put("imageData", base64Image);
-        
-        NetworkClient.getInstance().sendMessage(MessageType.CONTACT_MOD, data);
-        JOptionPane.showMessageDialog(this, "Đã gửi thông tin sản phẩm thành công!");
-        
-        // Reset form
-        txtName.setText("");
-        txtDesc.setText("");
-        txtPrice.setText("");
-        base64Image = "";
-        lblImagePreview.setIcon(null);
-        lblImagePreview.setText("Chưa chọn ảnh");
     }
 }

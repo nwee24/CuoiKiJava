@@ -4,13 +4,14 @@ import shared.MessageType;
 import javax.swing.*;
 import java.awt.*;
 import java.util.Map;
+import com.formdev.flatlaf.FlatDarkLaf;
 
 public class MainFrame extends JFrame implements NetworkClient.MessageListener {
     private CardLayout cardLayout;
     private JPanel mainPanel;
 
     private LoginPanel loginPanel;
-    private RegisterPanel registerPanel;git
+    private RegisterPanel registerPanel;
     
     // Khai báo trước các Dashboard
     private UserDashboard userDashboard;
@@ -109,8 +110,30 @@ public class MainFrame extends JFrame implements NetworkClient.MessageListener {
 
     public static void main(String[] args) {
         try {
-            UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
-        } catch (Exception e) {}
+            // Khử răng cưa font chữ hệ thống
+            System.setProperty("awt.useSystemAAFontSettings", "on");
+            System.setProperty("swing.aatext", "true");
+            
+            // Thiết lập Look and Feel hiện đại tối giản
+            FlatDarkLaf.setup();
+            
+            // Tự động bo tròn cho các Swing component mặc định
+            UIManager.put("Button.arc", 16);
+            UIManager.put("Component.arc", 12);
+            UIManager.put("TextComponent.arc", 12);
+            UIManager.put("ScrollBar.thumbArc", 12);
+            UIManager.put("ScrollBar.trackArc", 12);
+            UIManager.put("ScrollBar.width", 10);
+            
+            // Custom font mặc định thanh thoát
+            Font systemFont = new Font("Segoe UI", Font.PLAIN, 13);
+            UIManager.put("defaultFont", systemFont);
+            
+        } catch (Exception e) {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ex) {}
+        }
         
         SwingUtilities.invokeLater(() -> {
             MainFrame frame = new MainFrame();

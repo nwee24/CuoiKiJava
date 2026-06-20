@@ -287,4 +287,7 @@ public class AuctionRoom {
     public List<String> getInvitedSellersList() {
         return new ArrayList<>(invitedSellers);
     }
+    public int getProductCount() {
+        return products.size();
+    }
 }

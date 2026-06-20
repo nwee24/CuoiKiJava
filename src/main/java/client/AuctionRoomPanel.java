@@ -36,6 +36,10 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     private boolean flashState = false;
     private int currentProductSellerId = 0;
 
+    // ─── Local countdown (chạy mỗi giây, sync với server) ────────────────────
+    private int localCountdown = 0;
+    private javax.swing.Timer countdownTimer;
+
     // ─── Product info (left) ──────────────────────────────────────────────────
     private JLabel lblImage;
     private JLabel lblName;
@@ -97,10 +101,18 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
         add(vertSplit, BorderLayout.CENTER);
 
-        // Flash timer
+        // Flash timer (nhấp nháy màu khi ≤10 giây)
         flashTimer = new javax.swing.Timer(500, e -> {
             flashState = !flashState;
             lblCountdown.setForeground(flashState ? DANGER : AMBER);
+        });
+
+        // Countdown timer: đếm ngược cục bộ mỗi giây, sync với server qua BID_UPDATE
+        countdownTimer = new javax.swing.Timer(1000, e -> {
+            if (localCountdown > 0) {
+                localCountdown--;
+                updateCountdownDisplay(localCountdown);
+            }
         });
     }
 
@@ -235,26 +247,14 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
         // Input + Button row
         g.gridy = 5; g.gridwidth = 1; g.weightx = 1.0;
-        txtBidAmount = new JTextField();
-        txtBidAmount.setBackground(BG_CARD);
-        txtBidAmount.setForeground(FG);
-        txtBidAmount.setCaretColor(ACCENT_L);
+        txtBidAmount = UITheme.darkTextField("Nhập số tiền...");
         txtBidAmount.setFont(new Font("Segoe UI", Font.PLAIN, 15));
-        txtBidAmount.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(BORDER, 1, true),
-            new EmptyBorder(10, 12, 10, 12)));
         txtBidAmount.addActionListener(e -> placeBid()); // Enter to bid
         p.add(txtBidAmount, g);
 
         g.gridx = 1; g.weightx = 0;
-        btnPlaceBid = new JButton("ĐẶT GIÁ");
+        btnPlaceBid = UITheme.primaryBtn("ĐẶT GIÁ");
         btnPlaceBid.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        btnPlaceBid.setForeground(Color.WHITE);
-        btnPlaceBid.setBackground(ACCENT);
-        btnPlaceBid.setFocusPainted(false);
-        btnPlaceBid.setBorderPainted(false);
-        btnPlaceBid.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnPlaceBid.setBorder(new EmptyBorder(10, 20, 10, 20));
         btnPlaceBid.addActionListener(e -> placeBid());
         p.add(btnPlaceBid, g);
 
@@ -275,25 +275,40 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
         btnExtend = new JButton("+30s Gia Han");
         styleBtn(btnExtend, new Color(20,60,40), SUCCESS);
-        btnExtend.addActionListener(e ->
-            NetworkClient.getInstance().sendMessage(MessageType.EXTEND_TIME, Map.of("roomId", roomId)));
+        btnExtend.addActionListener(e -> {
+            Map<String, String> params = new HashMap<>();
+            params.put("roomId", roomId);
+            NetworkClient.getInstance().sendMessage(MessageType.EXTEND_TIME, params);
+        });
 
         btnNextProduct = new JButton(">> Chuyen SP");
         styleBtn(btnNextProduct, new Color(40,40,20), AMBER);
         btnNextProduct.addActionListener(e -> {
             int c = JOptionPane.showConfirmDialog(this, "Bỏ qua sản phẩm hiện tại?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-            if (c == JOptionPane.YES_OPTION)
-                NetworkClient.getInstance().sendMessage(MessageType.NEXT_PRODUCT, Map.of("roomId", roomId));
+            if (c == JOptionPane.YES_OPTION) {
+                Map<String, String> params = new HashMap<>();
+                params.put("roomId", roomId);
+                NetworkClient.getInstance().sendMessage(MessageType.NEXT_PRODUCT, params);
+            }
         });
 
         btnCloseRoom = new JButton("[ ] Dong Phong");
         styleBtn(btnCloseRoom, new Color(60,15,15), DANGER);
         btnCloseRoom.addActionListener(e -> {
             int c = JOptionPane.showConfirmDialog(this, "Đóng phòng đấu giá?", "Xác nhận", JOptionPane.YES_NO_OPTION);
-            if (c == JOptionPane.YES_OPTION)
-                NetworkClient.getInstance().sendMessage(MessageType.CLOSE_ROOM, Map.of("roomId", roomId));
+            if (c == JOptionPane.YES_OPTION) {
+                Map<String, String> params = new HashMap<>();
+                params.put("roomId", roomId);
+                NetworkClient.getInstance().sendMessage(MessageType.CLOSE_ROOM, params);
+            }
         });
 
+        // Nút thêm sản phẩm (Moderator only)
+        JButton btnAddProduct = new JButton("+ Them SP");
+        styleBtn(btnAddProduct, new Color(40,20,60), new Color(167,139,250));
+        btnAddProduct.addActionListener(e -> openAddProductDialog());
+        
+        p.add(btnAddProduct);
         p.add(btnExtend);
         p.add(btnNextProduct);
         p.add(btnCloseRoom);
@@ -365,6 +380,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
     public void leaveRoom() {
         if (flashTimer != null) flashTimer.stop();
+        if (countdownTimer != null) countdownTimer.stop();
         NetworkClient.getInstance().removeListener(this);
         Map<String, String> d = new HashMap<>();
         d.put("roomId", roomId);
@@ -415,7 +431,9 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     }
 
     private void handleProductChange(Map<String, String> data) {
+        // Dừng hết timer cũ, reset trạng thái
         flashTimer.stop();
+        countdownTimer.stop();
         lblCountdown.setForeground(AMBER);
 
         // Product info
@@ -443,6 +461,12 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
         txtBidHistory.append("\n--- San pham moi: " + name + " ---\n");
         txtBidHistory.append("Gia khoi diem: " + formatVnd(price) + "\n");
+
+        // Khởi động đếm ngược từ giá trị mặc định (server sẽ sync ngay qua BID_UPDATE)
+        localCountdown = 30;
+        lblCountdown.setText("30");
+        lblCountdown.setForeground(AMBER);
+        countdownTimer.start();
 
         // Load image
         String img64 = data.get("imageData");
@@ -482,18 +506,34 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             scrollHistory();
         }
 
-        lblCountdown.setText("Con lai: " + sec + "s");
-        if (sec <= 10 && sec > 0) {
+        // Sync countdown từ server (tránh lệch do network delay)
+        localCountdown = sec;
+        if (sec > 0 && !countdownTimer.isRunning()) {
+            countdownTimer.start();
+        }
+        updateCountdownDisplay(sec);
+    }
+
+    /** Cập nhật label đếm ngược + hiệu ứng nhấp nháy */
+    private void updateCountdownDisplay(int sec) {
+        if (sec > 10) {
+            flashTimer.stop();
+            lblCountdown.setForeground(AMBER);
+            lblCountdown.setText(String.valueOf(sec));
+        } else if (sec > 0) {
+            lblCountdown.setText(String.valueOf(sec));
             if (!flashTimer.isRunning()) flashTimer.start();
         } else {
+            countdownTimer.stop();
             flashTimer.stop();
-            lblCountdown.setForeground(sec <= 30 ? AMBER : SUCCESS);
+            lblCountdown.setText("0");
+            lblCountdown.setForeground(DANGER);
         }
-        if (sec == 0) lblCountdown.setText("⏱ Đang chốt...");
     }
 
     private void handleAuctionEnd(Map<String, String> data) {
         flashTimer.stop();
+        countdownTimer.stop();
         String winner = data.getOrDefault("winnerName", "Không có người mua");
         String price  = data.getOrDefault("finalPrice", "0");
         String pname  = data.getOrDefault("productName", "");
@@ -545,8 +585,9 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         b.setForeground(fg);
         b.setBackground(bg);
         b.setFocusPainted(false);
-        b.setBorderPainted(false);
+        b.setBorderPainted(true);
         b.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        b.putClientProperty("JButton.buttonType", "roundRect");
         b.setBorder(new EmptyBorder(8, 16, 8, 16));
     }
 
@@ -560,4 +601,140 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     private void scrollHistory() {
         txtBidHistory.setCaretPosition(txtBidHistory.getDocument().getLength());
     }
+
+    // ─── Add Product Dialog (Mod Only) ────────────────────────────────────────
+    private void openAddProductDialog() {
+        JDialog dialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), 
+            "Chọn Sản Phẩm Để Thêm Vào Phòng", true);
+        dialog.setLayout(new BorderLayout(10, 10));
+        dialog.setSize(750, 500);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
+        mainPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+        mainPanel.setBackground(BG_PANEL);
+
+        JLabel lblTitle = new JLabel("Chọn sản phẩm và chỉnh sửa giá khởi điểm (nếu cần)");
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        lblTitle.setForeground(FG);
+        lblTitle.setBorder(new EmptyBorder(0, 0, 10, 0));
+        mainPanel.add(lblTitle, BorderLayout.NORTH);
+
+        // Product table
+        String[] columnNames = {"Chọn", "ID", "Tên Sản Phẩm", "Người Bán", "Giá Khởi Điểm (VND)"};
+        javax.swing.table.DefaultTableModel tableModel = new javax.swing.table.DefaultTableModel(columnNames, 0) {
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 0) return Boolean.class;
+                return String.class;
+            }
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 0 || column == 4; // Checkbox and Price are editable
+            }
+        };
+        
+        JTable productTable = new JTable(tableModel);
+        productTable.setBackground(BG_CARD);
+        productTable.setForeground(FG);
+        productTable.setFont(FONT_UI);
+        productTable.setRowHeight(30);
+        productTable.getTableHeader().setBackground(BG_PANEL);
+        productTable.getTableHeader().setForeground(FG);
+        productTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 13));
+        
+        productTable.getColumnModel().getColumn(0).setMaxWidth(50);
+        productTable.getColumnModel().getColumn(1).setMaxWidth(50);
+
+        JScrollPane scrollPane = new JScrollPane(productTable);
+        scrollPane.setBorder(BorderFactory.createLineBorder(BORDER, 1));
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Buttons
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        btnPanel.setOpaque(false);
+
+        JButton btnCancel = UITheme.secondaryBtn("Hủy");
+        btnCancel.addActionListener(ev -> dialog.dispose());
+
+        JButton btnAdd = UITheme.primaryBtn("Thêm Sản Phẩm");
+        btnAdd.addActionListener(ev -> {
+            if (productTable.isEditing()) productTable.getCellEditor().stopCellEditing();
+            
+            StringBuilder productIds = new StringBuilder();
+            StringBuilder customPrices = new StringBuilder();
+            int count = 0;
+            
+            for (int i = 0; i < tableModel.getRowCount(); i++) {
+                Boolean isSelected = (Boolean) tableModel.getValueAt(i, 0);
+                if (isSelected != null && isSelected) {
+                    if (count > 0) {
+                        productIds.append(",");
+                        customPrices.append(",");
+                    }
+                    productIds.append(tableModel.getValueAt(i, 1).toString());
+                    String priceInput = tableModel.getValueAt(i, 4).toString().replace(".", "").replace(",", "");
+                    customPrices.append(priceInput);
+                    count++;
+                }
+            }
+            
+            if (count == 0) {
+                JOptionPane.showMessageDialog(dialog, "Vui lòng chọn ít nhất một sản phẩm!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            Map<String, String> data = new HashMap<>();
+            data.put("roomId", roomId);
+            data.put("productIds", productIds.toString());
+            data.put("customPrices", customPrices.toString());
+            NetworkClient.getInstance().sendMessage(MessageType.ADD_PRODUCT_TO_SESSION, data);
+            
+            JOptionPane.showMessageDialog(dialog, "✅ Đã gửi yêu cầu thêm " + count + " sản phẩm!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
+            dialog.dispose();
+        });
+
+        btnPanel.add(btnCancel);
+        btnPanel.add(btnAdd);
+        mainPanel.add(btnPanel, BorderLayout.SOUTH);
+
+        dialog.add(mainPanel);
+
+        // Fetch products
+        Map<String, String> request = new HashMap<>();
+        request.put("roomId", roomId);
+        
+        NetworkClient.MessageListener tempListener = new NetworkClient.MessageListener() {
+            @Override
+            public void onMessage(MessageType type, Map<String, String> data) {
+                if (type == MessageType.GET_APPROVED_PRODUCTS_IN_ROOM && roomId.equals(data.get("roomId"))) {
+                    SwingUtilities.invokeLater(() -> {
+                        String productsStr = data.get("products");
+                        tableModel.setRowCount(0);
+                        
+                        if (productsStr != null && !productsStr.isEmpty()) {
+                            String[] products = productsStr.split("\\|");
+                            for (String productStr : products) {
+                                String[] parts = productStr.split(",", -1);
+                                if (parts.length >= 5) {
+                                    String id = parts[0];
+                                    String seller = parts[1];
+                                    String name = parts[2].replace(";", ",");
+                                    String price = parts[4];
+                                    tableModel.addRow(new Object[]{false, id, name, seller, price});
+                                }
+                            }
+                        }
+                        NetworkClient.getInstance().removeListener(this);
+                    });
+                }
+            }
+        };
+        
+        NetworkClient.getInstance().addListener(tempListener);
+        NetworkClient.getInstance().sendMessage(MessageType.GET_APPROVED_PRODUCTS_IN_ROOM, request);
+        
+        dialog.setVisible(true);
+    }
+
 }

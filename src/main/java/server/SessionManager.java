@@ -28,6 +28,23 @@ public class SessionManager {
     private final ConcurrentHashMap<String, Session> activeSessions = new ConcurrentHashMap<>();
     // Map username → ClientHandler để routing tin nhắn trực tiếp
     private final ConcurrentHashMap<String, ClientHandler> onlineHandlers = new ConcurrentHashMap<>();
+    
+    // Map offline messages: username -> List of Xml strings
+    private final ConcurrentHashMap<String, java.util.List<String>> offlineMessages = new ConcurrentHashMap<>();
+    
+    public void addOfflineMessage(String username, String xmlMessage) {
+        offlineMessages.computeIfAbsent(username, k -> new java.util.ArrayList<>()).add(xmlMessage);
+    }
+    
+    public void sendOfflineMessages(String username, ClientHandler handler) {
+        java.util.List<String> msgs = offlineMessages.remove(username);
+        if (msgs != null) {
+            for (String msg : msgs) {
+                handler.sendMessage(msg);
+            }
+        }
+    }
+
     private final ScheduledExecutorService cleaner = Executors.newSingleThreadScheduledExecutor();
 
     private SessionManager() {
@@ -80,6 +97,7 @@ public class SessionManager {
     public void registerHandler(String username, ClientHandler handler) {
         onlineHandlers.put(username, handler);
         System.out.println("[SessionManager] User '" + username + "' đã kết nối. Online: " + onlineHandlers.size());
+        // Lệnh gửi tin nhắn offline được dời sang khi Client yêu cầu (SYNC_OFFLINE)
     }
 
     /** Hủy đăng ký khi user ngắt kết nối */

@@ -2,63 +2,45 @@ package client;
 
 import shared.MessageType;
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.border.MatteBorder;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.JTableHeader;
+import javax.swing.border.*;
+import javax.swing.table.*;
 import java.awt.*;
+import java.awt.event.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
+import javax.imageio.ImageIO;
 
 public class ModeratorDashboard extends JPanel implements NetworkClient.MessageListener {
     private MainFrame mainFrame;
-
-    // Colors (shared with UserDashboard theme)
-    private static final Color BG_DARK       = new Color(15, 23, 42);
-    private static final Color BG_CARD       = new Color(30, 41, 59);
-    private static final Color BG_SIDEBAR    = new Color(15, 23, 42);
-    private static final Color ACCENT        = new Color(99, 102, 241);
-    private static final Color ACCENT_LIGHT  = new Color(129, 140, 248);
-    private static final Color TEXT_PRIMARY  = new Color(248, 250, 252);
-    private static final Color TEXT_MUTED    = new Color(148, 163, 184);
-    private static final Color SUCCESS       = new Color(52, 211, 153);
-    private static final Color DANGER        = new Color(248, 113, 113);
-    private static final Color BORDER        = new Color(51, 65, 85);
-    private static final Color AMBER         = new Color(251, 191, 36);
-
     private String activeTab = "REQUESTS";
     private JPanel contentArea;
     private Timer refreshTimer;
 
-    // Tab 1 – Product Requests
-    private DefaultListModel<String> requestModel;
-    private JList<String> listRequests;
+    private JPanel pendingContainer, approvedContainer, rejectedContainer;
+    private int pendingCount = 0;
+    private JLabel lblRequestCount;
 
-    // Tab 2 – Room Management
     private DefaultTableModel roomModel;
     private JTable tblMyRooms;
 
-    // Tab 3 – Chat
     private ChatPanel modChatPanel;
     private DefaultListModel<String> userListModel;
     private JList<String> listUsers;
+    private Map<String, Boolean> userStatusMap = new HashMap<>();
 
-    // Nav buttons
     private JButton btnNavRequests, btnNavRooms, btnNavChat;
-
-    // Notification Center
-    private NotificationCenter notifCenter;
 
     public ModeratorDashboard(MainFrame mainFrame) {
         this.mainFrame = mainFrame;
         setLayout(new BorderLayout());
-        setBackground(BG_DARK);
 
         add(buildHeader(),  BorderLayout.NORTH);
         add(buildSidebar(), BorderLayout.WEST);
 
         contentArea = new JPanel(new CardLayout());
-        contentArea.setBackground(BG_DARK);
         contentArea.setBorder(new EmptyBorder(20, 20, 20, 20));
         contentArea.add(buildRequestsPanel(), "REQUESTS");
         contentArea.add(buildRoomsPanel(),    "ROOMS");
@@ -68,286 +50,304 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
         NetworkClient.getInstance().addListener(this);
         NetworkClient.getInstance().sendMessage(MessageType.GET_ROOM_LIST, null);
         NetworkClient.getInstance().sendMessage(MessageType.GET_USER_LIST, null);
+        NetworkClient.getInstance().sendMessage(MessageType.GET_ALL_PRODUCTS, null);
 
-        // Auto-refresh mọi 5 giây
         refreshTimer = new Timer(5000, e -> {
             NetworkClient.getInstance().sendMessage(MessageType.GET_ROOM_LIST, null);
             NetworkClient.getInstance().sendMessage(MessageType.GET_USER_LIST, null);
+            NetworkClient.getInstance().sendMessage(MessageType.GET_ALL_PRODUCTS, null);
         });
         refreshTimer.start();
-
-        // NotificationCenter lắng nghe riêng (đã addListener trong constructor của nó)
-        // Khi seller gửi CONTACT_MOD, notifCenter sẽ tự nhận và hiện badge
-
         showTab("REQUESTS");
     }
 
-    // ============================================================
-    //  HEADER
-    // ============================================================
     private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(BG_CARD);
-        header.setBorder(BorderFactory.createCompoundBorder(
-            new MatteBorder(0, 0, 1, 0, BORDER),
-            new EmptyBorder(12, 24, 12, 24)
+        JPanel h = new JPanel(new BorderLayout());
+        h.setPreferredSize(new Dimension(0, 60));
+        h.setBorder(BorderFactory.createCompoundBorder(
+            new MatteBorder(0, 0, 1, 0, UIManager.getColor("Component.borderColor")),
+            new EmptyBorder(0, 20, 0, 20)
         ));
 
-        JLabel lblApp = new JLabel("AuctionPro");
-        lblApp.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        lblApp.setForeground(ACCENT_LIGHT);
-        header.add(lblApp, BorderLayout.WEST);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        JLabel logoIcon = new JLabel("⚡");
+        logoIcon.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        logoIcon.setForeground(UIManager.getColor("Actions.Yellow"));
+        JLabel logoText = new JLabel("AuctionPro");
+        logoText.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        JLabel sep = new JLabel(" | Moderator");
+        sep.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        sep.setForeground(UIManager.getColor("Label.disabledForeground"));
+        
+        left.add(logoIcon); left.add(logoText); left.add(sep);
+        h.add(left, BorderLayout.WEST);
 
-        // Right side: NotifCenter + Badge + Username
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        rightPanel.setBackground(BG_CARD);
-
-        // Notification Center bell button
-        notifCenter = new NotificationCenter();
-        notifCenter.setOpaque(false);
-        // Khi click vào item thông báo → chuyển sang tab Requests
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        NotificationCenter notifCenter = new NotificationCenter();
         notifCenter.setClickListener(item -> showTab("REQUESTS"));
-        rightPanel.add(notifCenter);
-
-        JLabel badge = new JLabel("  MODERATOR  ");
-        badge.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        badge.setForeground(AMBER);
-        badge.setBackground(new Color(92, 64, 10));
-        badge.setOpaque(true);
-        badge.setBorder(new EmptyBorder(3, 8, 3, 8));
-        rightPanel.add(badge);
+        right.add(notifCenter);
 
         String username = NetworkClient.getInstance().getCurrentUsername();
-        JLabel lblUser = new JLabel(username != null ? username : "Moderator");
-        lblUser.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        lblUser.setForeground(TEXT_MUTED);
-        rightPanel.add(lblUser);
-
-        header.add(rightPanel, BorderLayout.EAST);
-        return header;
+        JLabel userLabel = new JLabel("👤 " + (username != null ? username : "Moderator"));
+        userLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        right.add(userLabel);
+        
+        h.add(right, BorderLayout.EAST);
+        return h;
     }
 
-    // ============================================================
-    //  SIDEBAR
-    // ============================================================
     private JPanel buildSidebar() {
         JPanel sidebar = new JPanel();
         sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
-        sidebar.setBackground(BG_SIDEBAR);
+        sidebar.setPreferredSize(new Dimension(220, 0));
         sidebar.setBorder(BorderFactory.createCompoundBorder(
-            new MatteBorder(0, 0, 0, 1, BORDER),
-            new EmptyBorder(20, 10, 20, 10)
+            new MatteBorder(0, 0, 0, 1, UIManager.getColor("Component.borderColor")),
+            new EmptyBorder(20, 15, 20, 15)
         ));
-        sidebar.setPreferredSize(new Dimension(210, 0));
 
-        JLabel lblMenu = new JLabel("  QUẢN LÝ");
-        lblMenu.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        lblMenu.setForeground(TEXT_MUTED);
-        lblMenu.setAlignmentX(Component.LEFT_ALIGNMENT);
-        lblMenu.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
-        sidebar.add(lblMenu);
-        sidebar.add(Box.createVerticalStrut(8));
+        JLabel navLabel = new JLabel("ĐIỀU PHỐI VIÊN");
+        navLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        navLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        sidebar.add(navLabel);
+        sidebar.add(Box.createVerticalStrut(10));
 
-        btnNavRequests = createNavBtn(">> Yeu Cau Tu Seller", "REQUESTS");
-        btnNavRooms    = createNavBtn(">> Quan Ly Phong",     "ROOMS");
-        btnNavChat     = createNavBtn(">> Chat Voi Seller",   "CHAT");
+        btnNavRequests = makeNavItem("📥 Yêu Cầu Seller");
+        btnNavRooms    = makeNavItem("🏠 Quản Lý Phòng");
+        btnNavChat     = makeNavItem("💬 Chat Người Dùng");
 
-        sidebar.add(btnNavRequests);
-        sidebar.add(Box.createVerticalStrut(4));
-        sidebar.add(btnNavRooms);
-        sidebar.add(Box.createVerticalStrut(4));
+        btnNavRequests.addActionListener(e -> showTab("REQUESTS"));
+        btnNavRooms.addActionListener(e -> showTab("ROOMS"));
+        btnNavChat.addActionListener(e -> showTab("CHAT"));
+
+        sidebar.add(btnNavRequests); sidebar.add(Box.createVerticalStrut(5));
+        sidebar.add(btnNavRooms);    sidebar.add(Box.createVerticalStrut(5));
         sidebar.add(btnNavChat);
         sidebar.add(Box.createVerticalGlue());
 
+        JButton btnLogout = new JButton("Đăng xuất");
+        btnLogout.setForeground(UIManager.getColor("Actions.Red"));
+        btnLogout.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnLogout.addActionListener(e -> {
+            NetworkClient.getInstance().disconnect();
+            if (refreshTimer != null) refreshTimer.stop();
+            mainFrame.switchPanel("LOGIN");
+        });
+        sidebar.add(btnLogout);
         return sidebar;
     }
 
-    private JButton createNavBtn(String text, String tabKey) {
-        JButton btn = new JButton(text);
-        btn.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        btn.setForeground(TEXT_MUTED);
-        btn.setBackground(BG_SIDEBAR);
-        btn.setBorderPainted(false);
-        btn.setFocusPainted(false);
+    private JButton makeNavItem(String label) {
+        JButton btn = new JButton(label);
         btn.setHorizontalAlignment(SwingConstants.LEFT);
-        btn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(8, 12, 8, 12));
-
-        btn.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseEntered(java.awt.event.MouseEvent e) {
-                if (!activeTab.equals(tabKey)) {
-                    btn.setBackground(new Color(30, 41, 59));
-                    btn.setForeground(TEXT_PRIMARY);
-                }
-            }
-            public void mouseExited(java.awt.event.MouseEvent e) {
-                if (!activeTab.equals(tabKey)) {
-                    btn.setBackground(BG_SIDEBAR);
-                    btn.setForeground(TEXT_MUTED);
-                }
-            }
-        });
-        btn.addActionListener(e -> showTab(tabKey));
+        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btn.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        btn.putClientProperty("JButton.buttonType", "roundRect");
         return btn;
     }
 
     private void showTab(String tabKey) {
         activeTab = tabKey;
         ((CardLayout) contentArea.getLayout()).show(contentArea, tabKey);
-        for (JButton b : new JButton[]{btnNavRequests, btnNavRooms, btnNavChat}) {
-            b.setBackground(BG_SIDEBAR);
-            b.setForeground(TEXT_MUTED);
-            b.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        }
-        JButton active = tabKey.equals("REQUESTS") ? btnNavRequests
-                       : tabKey.equals("ROOMS")    ? btnNavRooms
-                       : btnNavChat;
-        active.setBackground(new Color(49, 46, 129));
-        active.setForeground(ACCENT_LIGHT);
-        active.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        
+        Font boldFont = new Font("Segoe UI", Font.BOLD, 14);
+        Font plainFont = new Font("Segoe UI", Font.PLAIN, 14);
+        
+        btnNavRequests.setFont(plainFont);
+        btnNavRooms.setFont(plainFont);
+        btnNavChat.setFont(plainFont);
+        
+        if ("REQUESTS".equals(tabKey)) btnNavRequests.setFont(boldFont);
+        else if ("ROOMS".equals(tabKey)) btnNavRooms.setFont(boldFont);
+        else btnNavChat.setFont(boldFont);
     }
 
-    // ============================================================
-    //  REQUESTS PANEL
-    // ============================================================
     private JPanel buildRequestsPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 16));
-        panel.setBackground(BG_DARK);
+        JPanel panel = new JPanel(new BorderLayout(0, 15));
+        
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        JLabel title = new JLabel("Yêu Cầu Từ Seller");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        lblRequestCount = new JLabel("Đang tải...");
+        lblRequestCount.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        lblRequestCount.setForeground(UIManager.getColor("Label.disabledForeground"));
+        header.add(title); header.add(lblRequestCount);
+        panel.add(header, BorderLayout.NORTH);
 
-        // Title
-        JPanel titleRow = new JPanel(new BorderLayout());
-        titleRow.setBackground(BG_DARK);
-        JLabel lbl = new JLabel("Yêu Cầu Từ Seller");
-        lbl.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lbl.setForeground(TEXT_PRIMARY);
-        titleRow.add(lbl, BorderLayout.WEST);
-
-        JLabel hint = new JLabel("Double-click để xem chi tiết");
-        hint.setFont(new Font("Segoe UI", Font.ITALIC, 12));
-        hint.setForeground(TEXT_MUTED);
-        titleRow.add(hint, BorderLayout.EAST);
-        panel.add(titleRow, BorderLayout.NORTH);
-
-        // List
-        requestModel = new DefaultListModel<>();
-        listRequests = new JList<>(requestModel);
-        listRequests.setBackground(BG_CARD);
-        listRequests.setForeground(TEXT_PRIMARY);
-        listRequests.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        listRequests.setFixedCellHeight(52);
-        listRequests.setBorder(new EmptyBorder(4, 10, 4, 10));
-        listRequests.setSelectionBackground(new Color(49, 46, 129));
-        listRequests.setSelectionForeground(TEXT_PRIMARY);
-        listRequests.setCellRenderer(new RequestCellRenderer());
-
-        requestModel.addElement("(Chưa có yêu cầu nào)");
-
-        JScrollPane sp = buildScrollPane(listRequests);
-        panel.add(sp, BorderLayout.CENTER);
-
-        // Action buttons
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        btnPanel.setBackground(BG_DARK);
-
-        JButton btnReject = new JButton("Tu Choi");
-        btnReject.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btnReject.setForeground(DANGER);
-        btnReject.setBackground(new Color(60, 20, 20));
-        btnReject.setBorderPainted(false);
-        btnReject.setFocusPainted(false);
-        btnReject.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnReject.setBorder(new EmptyBorder(9, 20, 9, 20));
-        btnReject.addActionListener(e -> {
-            int idx = listRequests.getSelectedIndex();
-            if (idx >= 0 && requestModel.getSize() > 0 && !requestModel.get(0).startsWith("(")) {
-                requestModel.remove(idx);
-                if (requestModel.isEmpty()) requestModel.addElement("(Chưa có yêu cầu nào)");
-            }
-        });
-
-        JButton btnApprove = new JButton("Duyet Yeu Cau");
-        btnApprove.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btnApprove.setForeground(new Color(15, 23, 42));
-        btnApprove.setBackground(SUCCESS);
-        btnApprove.setBorderPainted(false);
-        btnApprove.setFocusPainted(false);
-        btnApprove.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnApprove.setBorder(new EmptyBorder(9, 20, 9, 20));
-        btnApprove.addActionListener(e -> {
-            int idx = listRequests.getSelectedIndex();
-            if (idx >= 0 && requestModel.getSize() > 0 && !requestModel.get(0).startsWith("(")) {
-                String item = requestModel.get(idx);
-                showToast("Da duyet: " + item);
-                requestModel.remove(idx);
-                if (requestModel.isEmpty()) requestModel.addElement("(Chưa có yêu cầu nào)");
-            } else {
-                showToast("Vui lòng chọn một yêu cầu để duyệt.");
-            }
-        });
-
-        btnPanel.add(btnReject);
-        btnPanel.add(btnApprove);
-        panel.add(btnPanel, BorderLayout.SOUTH);
-
+        JTabbedPane tabbedPane = new JTabbedPane();
+        pendingContainer = createScrollableBox();
+        approvedContainer = createScrollableBox();
+        rejectedContainer = createScrollableBox();
+        
+        tabbedPane.addTab("⏳ Chờ duyệt", new JScrollPane(pendingContainer));
+        tabbedPane.addTab("✅ Đã duyệt", new JScrollPane(approvedContainer));
+        tabbedPane.addTab("❌ Từ chối", new JScrollPane(rejectedContainer));
+        
+        panel.add(tabbedPane, BorderLayout.CENTER);
         return panel;
     }
+    
+    private JPanel createScrollableBox() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(new EmptyBorder(10, 10, 10, 10));
+        return p;
+    }
 
-    // ============================================================
-    //  ROOMS PANEL (updated: uses CreateRoomDialog)
-    // ============================================================
+    private void updateRequestCount() {
+        if (lblRequestCount != null) {
+            lblRequestCount.setText(pendingCount == 0 ? "Chưa có yêu cầu mới" : pendingCount + " sản phẩm chờ duyệt");
+        }
+    }
+
+    private void populateProductContainer(JPanel container, java.util.List<Map<String,String>> items, String status) {
+        container.removeAll();
+        if (items.isEmpty()) {
+            JLabel empty = new JLabel("Không có sản phẩm nào");
+            empty.setAlignmentX(Component.CENTER_ALIGNMENT);
+            container.add(empty);
+        } else {
+            for (Map<String,String> d : items) {
+                container.add(buildProductCard(d, status));
+                container.add(Box.createVerticalStrut(10));
+            }
+        }
+        container.revalidate();
+        container.repaint();
+    }
+
+    private JPanel buildProductCard(Map<String,String> data, String status) {
+        String productId = data.getOrDefault("productId", "0");
+        String productName = data.getOrDefault("productName", "(Không có tên)");
+        String senderName = data.getOrDefault("senderName", "?");
+        String description = data.getOrDefault("description", "");
+        String startingPrice = data.getOrDefault("startingPrice", "0");
+        String imageData = data.getOrDefault("imageData", "");
+
+        JPanel card = new JPanel(new BorderLayout(15, 0));
+        card.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(UIManager.getColor("Component.borderColor"), 1, true),
+            new EmptyBorder(10, 10, 10, 10)
+        ));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+
+        JLabel imgLabel = new JLabel();
+        imgLabel.setPreferredSize(new Dimension(80, 80));
+        imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        if (!imageData.isEmpty()) {
+            try {
+                byte[] bytes = Base64.getDecoder().decode(imageData.replaceAll("[^A-Za-z0-9+/=]", ""));
+                BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
+                if (bi != null) {
+                    imgLabel.setIcon(new ImageIcon(bi.getScaledInstance(80, 80, Image.SCALE_SMOOTH)));
+                } else {
+                    imgLabel.setText("No Image");
+                }
+            } catch (Exception ex) {
+                imgLabel.setText("Error");
+            }
+        } else {
+            imgLabel.setText("No Image");
+        }
+        card.add(imgLabel, BorderLayout.WEST);
+
+        JPanel info = new JPanel(new GridLayout(3, 1));
+        JLabel nameLbl = new JLabel(productName);
+        nameLbl.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        JLabel sellerLbl = new JLabel("Seller: " + senderName);
+        JLabel priceLbl = new JLabel("Giá khởi điểm: " + startingPrice + " VND");
+        priceLbl.setForeground(UIManager.getColor("Actions.Green"));
+        info.add(nameLbl); info.add(sellerLbl); info.add(priceLbl);
+        card.add(info, BorderLayout.CENTER);
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnView = new JButton("Xem");
+        btnView.addActionListener(e -> showProductDetailsDialog(productId, productName, senderName, description, startingPrice, imageData, card, status));
+        actions.add(btnView);
+
+        if ("PENDING".equals(status)) {
+            JButton btnApprove = new JButton("Duyệt");
+            btnApprove.putClientProperty("JButton.buttonType", "roundRect");
+            btnApprove.setForeground(UIManager.getColor("Actions.Green"));
+            btnApprove.addActionListener(e -> processProductAction(productId, MessageType.APPROVE_PRODUCT));
+            
+            JButton btnReject = new JButton("Từ chối");
+            btnReject.putClientProperty("JButton.buttonType", "roundRect");
+            btnReject.setForeground(UIManager.getColor("Actions.Red"));
+            btnReject.addActionListener(e -> processProductAction(productId, MessageType.REJECT_PRODUCT));
+            
+            actions.add(btnReject); actions.add(btnApprove);
+        }
+        card.add(actions, BorderLayout.EAST);
+        return card;
+    }
+
+    private void processProductAction(String productId, MessageType type) {
+        Map<String,String> msg = new HashMap<>();
+        msg.put("productId", productId);
+        NetworkClient.getInstance().sendMessage(type, msg);
+        NetworkClient.getInstance().sendMessage(MessageType.GET_ALL_PRODUCTS, null);
+    }
+
+    private void showProductDetailsDialog(String productId, String productName, String senderName, String description, String startingPrice, String imageData, JPanel card, String status) {
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Chi Tiết Sản Phẩm", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setSize(500, 400);
+        dialog.setLocationRelativeTo(this);
+        
+        JPanel p = new JPanel(new BorderLayout(15, 15));
+        p.setBorder(new EmptyBorder(15, 15, 15, 15));
+        
+        JTextArea descArea = new JTextArea(description);
+        descArea.setWrapStyleWord(true); descArea.setLineWrap(true); descArea.setEditable(false);
+        p.add(new JScrollPane(descArea), BorderLayout.CENTER);
+        
+        JPanel top = new JPanel(new GridLayout(3, 1));
+        top.add(new JLabel("Tên: " + productName));
+        top.add(new JLabel("Người bán: " + senderName));
+        top.add(new JLabel("Giá: " + startingPrice + " VND"));
+        p.add(top, BorderLayout.NORTH);
+        
+        dialog.add(p);
+        dialog.setVisible(true);
+    }
+
     private JPanel buildRoomsPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 16));
-        panel.setBackground(BG_DARK);
+        JPanel panel = new JPanel(new BorderLayout(0, 15));
+        
+        JPanel header = new JPanel();
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        JLabel title = new JLabel("Quản Lý Phòng");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        header.add(title);
+        panel.add(header, BorderLayout.NORTH);
 
-        JLabel lbl = new JLabel("Quản Lý Phòng Đấu Giá");
-        lbl.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lbl.setForeground(TEXT_PRIMARY);
-        panel.add(lbl, BorderLayout.NORTH);
-
-        // Table
         roomModel = new DefaultTableModel(new Object[]{"Mã Phòng", "Tiêu Đề", "Sellers", "Trạng Thái"}, 0) {
             public boolean isCellEditable(int r, int c) { return false; }
         };
-        tblMyRooms = buildStyledTable(roomModel);
-        panel.add(buildScrollPane(tblMyRooms), BorderLayout.CENTER);
+        tblMyRooms = new JTable(roomModel);
+        tblMyRooms.setRowHeight(35);
+        panel.add(new JScrollPane(tblMyRooms), BorderLayout.CENTER);
 
-        // Bottom control bar
-        JPanel bottomBar = new JPanel(new BorderLayout(12, 0));
-        bottomBar.setBackground(new Color(22, 32, 48));
-        bottomBar.setBorder(BorderFactory.createCompoundBorder(
-            new MatteBorder(1, 0, 0, 0, BORDER),
-            new EmptyBorder(12, 0, 4, 0)
-        ));
-
-        // LEFT: Tạo phòng mới (opens dialog)
-        JPanel createRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        createRow.setBackground(new Color(22, 32, 48));
-
-        JButton btnCreate = createPrimaryBtn("＋ Tạo Phòng Mới...");
-        btnCreate.addActionListener(e -> openCreateRoomDialog());
-
-        createRow.add(btnCreate);
-        bottomBar.add(createRow, BorderLayout.WEST);
-
-        // RIGHT: Vào phòng, bắt đầu đấu giá
-        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        actionRow.setBackground(new Color(22, 32, 48));
-
-        JButton btnOpenAuction = createAccentBtn("▶ Bắt Đầu Đấu Giá", AMBER, new Color(15, 23, 42));
-        btnOpenAuction.addActionListener(e -> {
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JButton btnCreate = new JButton("+ Tạo Phòng");
+        btnCreate.addActionListener(e -> {
+            CreateRoomDialog dialog = new CreateRoomDialog(SwingUtilities.getWindowAncestor(this));
+            dialog.setVisible(true);
+            if (dialog.isConfirmed()) NetworkClient.getInstance().sendMessage(MessageType.GET_ROOM_LIST, null);
+        });
+        
+        JButton btnStart = new JButton("Bắt Đầu");
+        btnStart.addActionListener(e -> {
             int row = tblMyRooms.getSelectedRow();
             if (row >= 0) {
-                String rid = (String) roomModel.getValueAt(row, 0);
-                NetworkClient.getInstance().sendMessage(MessageType.OPEN_AUCTION, Map.of("roomId", rid));
-            } else {
-                showToast("Vui lòng chọn phòng để bắt đầu.");
-            }
+                Map<String, String> params = new HashMap<>();
+                params.put("roomId", (String) roomModel.getValueAt(row, 0));
+                NetworkClient.getInstance().sendMessage(MessageType.OPEN_AUCTION, params);
+            } else JOptionPane.showMessageDialog(this, "Chọn phòng!");
         });
-
-        JButton btnViewRoom = createPrimaryBtn("🚪 Vào Phòng Điều Hành");
-        btnViewRoom.addActionListener(e -> {
+        
+        JButton btnEnter = new JButton("Vào Phòng");
+        btnEnter.addActionListener(e -> {
             int row = tblMyRooms.getSelectedRow();
             if (row >= 0) {
                 String rid = (String) roomModel.getValueAt(row, 0);
@@ -355,244 +355,104 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
                 roomPanel.initRoom(rid, true);
                 mainFrame.addPanel(roomPanel, "MOD_ROOM_" + rid);
                 mainFrame.switchPanel("MOD_ROOM_" + rid);
-            } else {
-                showToast("Vui lòng chọn phòng để vào.");
-            }
+            } else JOptionPane.showMessageDialog(this, "Chọn phòng!");
         });
-
-        actionRow.add(btnOpenAuction);
-        actionRow.add(btnViewRoom);
-        bottomBar.add(actionRow, BorderLayout.EAST);
-
-        panel.add(bottomBar, BorderLayout.SOUTH);
+        
+        actions.add(btnCreate); actions.add(btnStart); actions.add(btnEnter);
+        panel.add(actions, BorderLayout.SOUTH);
         return panel;
     }
 
-    /** Mở CreateRoomDialog */
-    private void openCreateRoomDialog() {
-        Window owner = SwingUtilities.getWindowAncestor(this);
-        CreateRoomDialog dialog = new CreateRoomDialog(owner);
-        dialog.setVisible(true);
-        // Dialog là modal, khi đóng kiểm tra kết quả
-        if (dialog.isConfirmed()) {
-            // Đã gửi CREATE_ROOM_WITH_SELLERS trong dialog.onConfirm()
-            // Refresh danh sách phòng
-            NetworkClient.getInstance().sendMessage(MessageType.GET_ROOM_LIST, null);
-        }
-    }
-
-    // ============================================================
-    //  CHAT PANEL (Mod side)
-    // ============================================================
     private JPanel buildChatPanel() {
-        JPanel panel = new JPanel(new BorderLayout(0, 16));
-        panel.setBackground(BG_DARK);
+        JPanel panel = new JPanel(new BorderLayout(0, 15));
+        
+        JLabel title = new JLabel("Chat Người Dùng");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        panel.add(title, BorderLayout.NORTH);
 
-        JLabel lbl = new JLabel("Lien He Nguoi Dung");
-        lbl.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        lbl.setForeground(TEXT_PRIMARY);
-        panel.add(lbl, BorderLayout.NORTH);
-
-        // SplitPane: Trái = Danh sách user, Phải = Chat
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setDividerLocation(250);
-        splitPane.setDividerSize(4);
-        splitPane.setBorder(null);
-        splitPane.setBackground(BG_DARK);
-
-        // --- Left: User List ---
-        JPanel leftPanel = new JPanel(new BorderLayout());
-        leftPanel.setBackground(BG_CARD);
-        leftPanel.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, BORDER));
-
-        JLabel lblList = new JLabel(" Danh bạ người dùng");
-        lblList.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        lblList.setForeground(TEXT_MUTED);
-        lblList.setBorder(new EmptyBorder(10, 10, 10, 10));
-        leftPanel.add(lblList, BorderLayout.NORTH);
-
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         userListModel = new DefaultListModel<>();
         listUsers = new JList<>(userListModel);
-        listUsers.setBackground(BG_CARD);
-        listUsers.setSelectionBackground(new Color(49, 46, 129));
-        listUsers.setSelectionForeground(TEXT_PRIMARY);
-        listUsers.setCellRenderer(new RequestCellRenderer()); // Reuse renderer
-        listUsers.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                String selected = listUsers.getSelectedValue();
-                if (selected != null) {
-                    modChatPanel.setPrivateMode(selected);
-                }
+        listUsers.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                String user = value.toString();
+                setText((userStatusMap.getOrDefault(user, false) ? "● " : "○ ") + user);
+                return this;
             }
         });
-
-        JScrollPane scrollUsers = new JScrollPane(listUsers);
-        scrollUsers.setBorder(null);
-        scrollUsers.getViewport().setBackground(BG_CARD);
-        leftPanel.add(scrollUsers, BorderLayout.CENTER);
-        splitPane.setLeftComponent(leftPanel);
-
-        // --- Right: Chat Panel ---
+        listUsers.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting() && listUsers.getSelectedValue() != null)
+                modChatPanel.setPrivateMode(listUsers.getSelectedValue());
+        });
+        split.setLeftComponent(new JScrollPane(listUsers));
+        
         modChatPanel = new ChatPanel();
-        splitPane.setRightComponent(modChatPanel);
-
-        panel.add(splitPane, BorderLayout.CENTER);
+        split.setRightComponent(modChatPanel);
+        split.setDividerLocation(200);
+        panel.add(split, BorderLayout.CENTER);
         return panel;
     }
 
-    // ============================================================
-    //  UI Helpers
-    // ============================================================
-    private JTable buildStyledTable(DefaultTableModel model) {
-        JTable table = new JTable(model);
-        table.setBackground(BG_CARD);
-        table.setForeground(TEXT_PRIMARY);
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        table.setRowHeight(40);
-        table.setGridColor(BORDER);
-        table.setSelectionBackground(new Color(49, 46, 129));
-        table.setSelectionForeground(TEXT_PRIMARY);
-        table.setShowHorizontalLines(true);
-        table.setShowVerticalLines(false);
-        table.setIntercellSpacing(new Dimension(0, 1));
-
-        JTableHeader header = table.getTableHeader();
-        header.setBackground(new Color(22, 32, 48));
-        header.setForeground(TEXT_MUTED);
-        header.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        header.setBorder(new MatteBorder(0, 0, 1, 0, BORDER));
-        header.setReorderingAllowed(false);
-
-        DefaultTableCellRenderer r = new DefaultTableCellRenderer();
-        r.setBackground(BG_CARD);
-        r.setForeground(TEXT_PRIMARY);
-        for (int i = 0; i < model.getColumnCount(); i++)
-            table.getColumnModel().getColumn(i).setCellRenderer(r);
-
-        return table;
+    private java.util.List<Map<String,String>> parseProductList(String raw) {
+        java.util.List<Map<String,String>> list = new java.util.ArrayList<>();
+        if (raw == null || raw.isEmpty()) return list;
+        for (String entry : raw.split("\\|")) {
+            String[] p = entry.split(",", 6);
+            Map<String,String> m = new HashMap<>();
+            m.put("productId", p.length > 0 ? p[0] : "0");
+            m.put("senderName", p.length > 1 ? p[1] : "?");
+            m.put("productName", p.length > 2 ? p[2] : "");
+            m.put("description", p.length > 3 ? p[3] : "");
+            m.put("startingPrice", p.length > 4 ? p[4] : "0");
+            m.put("imageData", p.length > 5 ? p[5] : "");
+            list.add(m);
+        }
+        return list;
     }
 
-    private JScrollPane buildScrollPane(JComponent comp) {
-        JScrollPane sp = new JScrollPane(comp);
-        sp.setBorder(BorderFactory.createLineBorder(BORDER, 1, true));
-        sp.getViewport().setBackground(BG_CARD);
-        sp.setBackground(BG_CARD);
-        return sp;
-    }
-
-    private JButton createPrimaryBtn(String text) {
-        JButton btn = new JButton(text);
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btn.setForeground(Color.WHITE);
-        btn.setBackground(ACCENT);
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(9, 20, 9, 20));
-        return btn;
-    }
-
-    private JButton createAccentBtn(String text, Color bg, Color fg) {
-        JButton btn = new JButton(text);
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btn.setForeground(fg);
-        btn.setBackground(bg);
-        btn.setFocusPainted(false);
-        btn.setBorderPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(9, 20, 9, 20));
-        return btn;
-    }
-
-    private void showToast(String msg) {
-        JOptionPane.showMessageDialog(this, msg, "Thông báo", JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    // ============================================================
-    //  MESSAGE HANDLER
-    // ============================================================
     @Override
     public void onMessage(MessageType type, Map<String, String> data) {
         SwingUtilities.invokeLater(() -> {
-            if (type == MessageType.SUCCESS && data.containsKey("roomId") && !data.containsKey("status")) {
-                showToast("✅ Phòng '" + data.get("roomId") + "' đã được tạo thành công!");
+            if (type == MessageType.SUCCESS && data.containsKey("roomId")) {
+                JOptionPane.showMessageDialog(this, "✅ Phòng tạo thành công!");
                 NetworkClient.getInstance().sendMessage(MessageType.GET_ROOM_LIST, null);
-
             } else if (type == MessageType.ROOM_INFO) {
                 String roomsStr = data.get("myRoomList");
-                if (roomsStr != null) {
-                    roomModel.setRowCount(0);
-                    if (!roomsStr.isEmpty()) {
-                        for (String r : roomsStr.split("\\|")) {
-                            String[] parts = r.split(",", -1);
-                            String id = parts.length > 0 ? parts[0] : "";
-                            String title = parts.length > 1 ? parts[1] : "Phiên Đấu Giá";
-                            String sellers = parts.length > 2 ? parts[2] : "";
-                            String status = parts.length > 3 ? parts[3] : "ACTIVE";
-                            roomModel.addRow(new Object[]{id, title, sellers, status});
-                        }
+                roomModel.setRowCount(0);
+                if (roomsStr != null && !roomsStr.isEmpty()) {
+                    for (String r : roomsStr.split("\\|")) {
+                        String[] parts = r.split(",", -1);
+                        roomModel.addRow(new Object[]{
+                            parts.length > 0 ? parts[0] : "",
+                            parts.length > 1 ? parts[1] : "",
+                            parts.length > 2 ? parts[2] : "",
+                            parts.length > 3 ? parts[3] : "ACTIVE"
+                        });
                     }
                 }
-
             } else if (type == MessageType.GET_USER_LIST) {
                 String usersStr = data.get("userList");
-                if (usersStr != null && userListModel != null) {
-                    // Cập nhật danh sách nếu có thay đổi để tránh flicker
-                    String[] newUsers = usersStr.isEmpty() ? new String[0] : usersStr.split(",");
-                    if (userListModel.getSize() != newUsers.length) {
-                        userListModel.clear();
-                        for (String u : newUsers) userListModel.addElement(u);
-                    } else {
-                        boolean changed = false;
-                        for (int i = 0; i < newUsers.length; i++) {
-                            if (!newUsers[i].equals(userListModel.get(i))) {
-                                changed = true;
-                                break;
-                            }
-                        }
-                        if (changed) {
-                            userListModel.clear();
-                            for (String u : newUsers) userListModel.addElement(u);
-                        }
+                userStatusMap.clear(); userListModel.clear();
+                if (usersStr != null && !usersStr.isEmpty()) {
+                    for (String u : usersStr.split(",")) {
+                        String[] parts = u.split(":");
+                        String name = parts[0].trim();
+                        userStatusMap.put(name, parts.length > 1 && "1".equals(parts[1]));
+                        userListModel.addElement(name);
                     }
                 }
-
-            } else if (type == MessageType.CONTACT_MOD) {
-                String product = "[YC] " + data.getOrDefault("productName", "?")
-                    + "  |  Gia: " + data.getOrDefault("startingPrice", "?")
-                    + "  |  Tu: " + data.getOrDefault("senderName", "?");
-                if (requestModel.size() == 1 && requestModel.get(0).startsWith("(")) {
-                    requestModel.clear();
-                }
-                requestModel.addElement(product);
-
+            } else if (type == MessageType.GET_ALL_PRODUCTS) {
+                java.util.List<Map<String,String>> pending = parseProductList(data.get("pending"));
+                pendingCount = pending.size();
+                populateProductContainer(pendingContainer, pending, "PENDING");
+                populateProductContainer(approvedContainer, parseProductList(data.get("approved")), "APPROVED");
+                populateProductContainer(rejectedContainer, parseProductList(data.get("rejected")), "REJECTED");
+                updateRequestCount();
             } else if (type == MessageType.ERROR && data.containsKey("message")) {
-                JOptionPane.showMessageDialog(
-                    ModeratorDashboard.this,
-                    "❌ " + data.get("message"),
-                    "Lỗi",
-                    JOptionPane.ERROR_MESSAGE
-                );
+                JOptionPane.showMessageDialog(this, "❌ " + data.get("message"), "Lỗi", JOptionPane.ERROR_MESSAGE);
             }
         });
-    }
-
-    // ─── Request Cell Renderer ────────────────────────────────────────────────
-    private static class RequestCellRenderer extends DefaultListCellRenderer {
-        private static final Color BG   = new Color(30, 41, 59);
-        private static final Color SEL  = new Color(49, 46, 129);
-        private static final Color FG   = new Color(248, 250, 252);
-        private static final Color MUTED= new Color(148, 163, 184);
-
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value,
-                int index, boolean isSelected, boolean hasFocus) {
-            JLabel lbl = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, hasFocus);
-            lbl.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-            lbl.setForeground(isSelected ? FG : (value.toString().startsWith("(") ? MUTED : FG));
-            lbl.setBackground(isSelected ? SEL : BG);
-            lbl.setBorder(new EmptyBorder(8, 12, 8, 12));
-            return lbl;
-        }
     }
 }

@@ -138,6 +138,22 @@ public class NetworkClient {
         }
     }
 
+    public void disconnect() {
+        try {
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        socket = null;
+        writer = null;
+        reader = null;
+        sessionToken = null;
+        currentUserRole = null;
+        currentUsername = null;
+    }
+
     public void sendMessage(MessageType type, Map<String, String> fields) {
         if (writer != null) {
             if (fields == null) fields = new java.util.HashMap<>();
