@@ -200,6 +200,11 @@ public class AuctionRoom {
         String status = currentWinnerId != null ? "SOLD" : "PASSED";
         auctionSessionDAO.updateWinner(sp.getId(), currentWinnerId != null ? currentWinnerId : 0, currentHighestBid, status);
 
+        // Tính hoa hồng nếu sản phẩm bán thành công
+        if (currentWinnerId != null) {
+            calculateAndSaveCommission(currentHighestBid);
+        }
+
         Map<String, String> msg = new HashMap<>();
         msg.put("roomId", roomId);
         msg.put("productId", String.valueOf(sp.getProductId()));
@@ -213,31 +218,45 @@ public class AuctionRoom {
         Executors.newSingleThreadScheduledExecutor().schedule(this::nextProduct, 4, TimeUnit.SECONDS);
     }
 
-    private void doCloseRoom() {
-        if (timerService != null) timerService.shutdownNow();
-        auctionSessionDAO.endSession(roomId, "ENDED");
-        SessionManager.getInstance().notifyAdminRoomChanged();
-
-        // Tính toán hoa hồng cho Moderator
+    private void calculateAndSaveCommission(BigDecimal finalPrice) {
         try (java.sql.Connection conn = dao.DBConnection.getConnection()) {
-            java.math.BigDecimal total = currentHighestBid;
-            java.math.BigDecimal commPercent = new java.math.BigDecimal("0.05"); // 5%
-            java.math.BigDecimal modFee = total.multiply(commPercent);
+            // Công thức hoa hồng thực tế (Tiered):
+            // 10% cho 1,000,000 VNĐ đầu tiên
+            // 5% cho phần còn lại
+            BigDecimal threshold = new BigDecimal("1000000");
+            BigDecimal modFee = BigDecimal.ZERO;
+            
+            if (finalPrice.compareTo(threshold) <= 0) {
+                modFee = finalPrice.multiply(new BigDecimal("0.10"));
+            } else {
+                BigDecimal firstPartFee = threshold.multiply(new BigDecimal("0.10"));
+                BigDecimal remaining = finalPrice.subtract(threshold);
+                BigDecimal secondPartFee = remaining.multiply(new BigDecimal("0.05"));
+                modFee = firstPartFee.add(secondPartFee);
+            }
 
             try (java.sql.PreparedStatement ps = conn.prepareStatement(
                 "INSERT INTO transactions (user_id, amount, type) VALUES (?, ?, 'COMMISSION')")) {
-                ps.setInt(1, moderatorHandler != null ? 1 : 1); // TODO: lấy id Mod thực tế
+                // TODO: lấy id Mod thực tế, tạm dùng 1
+                ps.setInt(1, moderatorHandler != null ? 1 : 1);
                 ps.setBigDecimal(2, modFee);
                 ps.executeUpdate();
             }
+            
             Map<String, String> modMsg = new HashMap<>();
-            modMsg.put("message", "Phiên kết thúc. Hoa hồng của bạn: " + modFee + " VND");
+            modMsg.put("message", "Sản phẩm bán thành công. Hoa hồng thu được: " + modFee.intValue() + " VND");
             if (moderatorHandler != null) {
                 moderatorHandler.sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, modMsg));
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void doCloseRoom() {
+        if (timerService != null) timerService.shutdownNow();
+        auctionSessionDAO.endSession(roomId, "ENDED");
+        SessionManager.getInstance().notifyAdminRoomChanged();
 
         Map<String, String> msg = new HashMap<>();
         msg.put("roomId", roomId);

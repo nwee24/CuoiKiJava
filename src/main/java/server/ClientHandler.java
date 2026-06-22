@@ -796,13 +796,13 @@ public class ClientHandler implements Runnable {
         
         // Lấy danh sách users
         List<model.User> allUsers = userDAO.findAll();
+        allUsers.sort(java.util.Comparator.comparingInt(model.User::getId)); // Sắp xếp theo ID tăng dần
         StringBuilder sbUsers = new StringBuilder();
         for (model.User u : allUsers) {
             if (sbUsers.length() > 0) sbUsers.append("|");
             sbUsers.append(u.getId()).append(",")
                    .append(u.getUsername()).append(",")
                    .append(u.getRole().name()).append(",")
-                   .append(u.getBalance().intValue()).append(",")
                    .append(u.isBanned() ? "BANNED" : "ACTIVE");
         }
         res.put("users", sbUsers.toString());

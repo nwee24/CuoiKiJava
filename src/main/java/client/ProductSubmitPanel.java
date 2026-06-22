@@ -31,6 +31,7 @@ public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageL
     // ... inside buildUI ...
     private void buildUI() {
         tabbedPane = new JTabbedPane();
+        tabbedPane.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
         tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 12));
         tabbedPane.setBackground(UITheme.BG_CARD);
         

@@ -29,6 +29,10 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
     private JButton btnNavDashboard, btnNavUsers, btnNavMods, btnNavRooms, btnNavPenalties;
     private RevenueChartPanel chartPanel;
 
+    private JComboBox<String> cbRoleFilter;
+    private JTextField txtSearchUser;
+    private TableRowSorter<DefaultTableModel> userSorter;
+
     public AdminDashboard(MainFrame mainFrame) {
         this.mainFrame = mainFrame;
         setLayout(new BorderLayout());
@@ -260,12 +264,67 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
         JPanel panel = UITheme.createCardPanel("wrap 1, insets 24, gap 16, fill");
         panel.add(buildPageHeader("Quản Lý Người Dùng", "Toàn bộ tài khoản trong hệ thống"), "growx");
         
-        userModel = new DefaultTableModel(new Object[]{"ID", "Tên Đăng Nhập", "Vai Trò", "Số Dư (VND)", "Trạng Thái"}, 0) {
+        // --- Top controls cho bảng người dùng ---
+        JPanel top = new JPanel(new MigLayout("insets 0, gap 12", "[grow][][]"));
+        top.setOpaque(false);
+
+        txtSearchUser = new JTextField();
+        txtSearchUser.putClientProperty("JTextField.placeholderText", "Tìm kiếm theo tên...");
+        txtSearchUser.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            public void insertUpdate(javax.swing.event.DocumentEvent e) { filterUsers(); }
+            public void removeUpdate(javax.swing.event.DocumentEvent e) { filterUsers(); }
+            public void changedUpdate(javax.swing.event.DocumentEvent e) { filterUsers(); }
+        });
+        top.add(txtSearchUser, "w 250!");
+
+        top.add(new JLabel("Vai trò:"));
+        cbRoleFilter = new JComboBox<>(new String[]{"Tất cả", "USER", "MODERATOR", "ADMIN"});
+        cbRoleFilter.addActionListener(e -> filterUsers());
+        top.add(cbRoleFilter);
+
+        panel.add(top, "growx");
+        
+        userModel = new DefaultTableModel(new Object[]{"ID", "Tên Đăng Nhập", "Vai Trò", "Trạng Thái"}, 0) {
             public boolean isCellEditable(int r, int c) { return false; }
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 0) return Integer.class;
+                return String.class;
+            }
         };
         tblUsers = buildTable(userModel);
+        
+        userSorter = new TableRowSorter<>(userModel);
+        userSorter.setSortKeys(java.util.Collections.singletonList(new javax.swing.RowSorter.SortKey(0, javax.swing.SortOrder.ASCENDING)));
+        tblUsers.setRowSorter(userSorter);
+
+        // Cố định kích cỡ cột ID (cột 0)
+        tblUsers.getColumnModel().getColumn(0).setMinWidth(50);
+        tblUsers.getColumnModel().getColumn(0).setMaxWidth(80);
+        tblUsers.getColumnModel().getColumn(0).setPreferredWidth(60);
+
         panel.add(UITheme.styledScrollPane(tblUsers), "grow, push");
         return panel;
+    }
+
+    private void filterUsers() {
+        if (userSorter == null) return;
+        String text = txtSearchUser.getText().trim();
+        String role = (String) cbRoleFilter.getSelectedItem();
+        
+        java.util.List<RowFilter<Object,Object>> filters = new java.util.ArrayList<>(2);
+        if (!text.isEmpty()) {
+            filters.add(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(text), 1)); // Cột 1: Tên đăng nhập
+        }
+        if (!"Tất cả".equals(role)) {
+            filters.add(RowFilter.regexFilter("^" + java.util.regex.Pattern.quote(role) + "$", 2)); // Cột 2: Vai trò
+        }
+        
+        if (filters.isEmpty()) {
+            userSorter.setRowFilter(null);
+        } else {
+            userSorter.setRowFilter(RowFilter.andFilter(filters));
+        }
     }
 
     private JPanel buildRoomsPanel() {
@@ -356,7 +415,19 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
                 userModel.setRowCount(0);
                 String u = data.get("users");
                 if (u != null && !u.isEmpty()) {
-                    for (String row : u.split("\\|")) userModel.addRow(row.split(",", -1));
+                    for (String row : u.split("\\|")) {
+                        String[] parts = row.split(",", -1);
+                        try {
+                            int id = Integer.parseInt(parts[0]);
+                            if (parts.length >= 5) {
+                                // Tương thích với payload cũ của Server: ID, Tên, Vai trò, Số dư, Trạng thái
+                                userModel.addRow(new Object[]{id, parts[1], parts[2], parts[4]});
+                            } else if (parts.length == 4) {
+                                // Payload mới: ID, Tên, Vai trò, Trạng thái
+                                userModel.addRow(new Object[]{id, parts[1], parts[2], parts[3]});
+                            }
+                        } catch (Exception ignored) {}
+                    }
                 }
                 
                 roomModel.setRowCount(0);
@@ -405,8 +476,8 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
 
     class RevenueChartPanel extends JPanel {
         private String[] labels = new String[0];
-        private int[] values = new int[0];
-        private int maxValue = 1;
+        private long[] values = new long[0];
+        private long maxValue = 1;
 
         public RevenueChartPanel() {
             setOpaque(false);
@@ -416,14 +487,14 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
             if (dataString == null || dataString.isEmpty()) return;
             String[] parts = dataString.split("\\|");
             labels = new String[parts.length];
-            values = new int[parts.length];
+            values = new long[parts.length];
             maxValue = 1;
             for (int i = 0; i < parts.length; i++) {
                 String[] kv = parts[i].split(":");
                 if (kv.length == 2) {
                     labels[i] = kv[0];
                     try {
-                        values[i] = Integer.parseInt(kv[1]);
+                        values[i] = Long.parseLong(kv[1]);
                         if (values[i] > maxValue) maxValue = values[i];
                     } catch (Exception e) {
                         values[i] = 0;
@@ -444,14 +515,73 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
 
             int width = getWidth();
             int height = getHeight();
-            int padding = 40;
-            int chartWidth = width - 2 * padding;
-            int chartHeight = height - 2 * padding;
+            int paddingLeft = 65; // Tăng padding trái để hiển thị rõ nhãn trục tung
+            int paddingRight = 40;
+            int paddingTop = 40;
+            int paddingBottom = 40;
+            int chartWidth = width - paddingLeft - paddingRight;
+            int chartHeight = height - paddingTop - paddingBottom;
 
-            // Vẽ trục
-            g2.setColor(UITheme.BORDER);
-            g2.drawLine(padding, padding, padding, height - padding);
-            g2.drawLine(padding, height - padding, width - padding, height - padding);
+            g2.setFont(UITheme.fontBody(12));
+            FontMetrics fm = g2.getFontMetrics();
+
+            // Tính toán maxValue làm tròn (nice renderMax) để trục Y hiển thị số chẵn
+            int numGridLines = 5;
+            long renderMax = maxValue;
+            long niceInterval = 1;
+            if (maxValue > 0) {
+                double rawInterval = (double) maxValue / numGridLines;
+                if (rawInterval <= 1.0) {
+                    niceInterval = 1;
+                } else {
+                    double magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)));
+                    double normalized = rawInterval / magnitude;
+                    double niceNormalized;
+                    if (normalized <= 1.0) niceNormalized = 1.0;
+                    else if (normalized <= 2.0) niceNormalized = 2.0;
+                    else if (normalized <= 5.0) niceNormalized = 5.0;
+                    else niceNormalized = 10.0;
+                    niceInterval = (long) (niceNormalized * magnitude);
+                }
+                if (niceInterval <= 0) niceInterval = 1;
+                renderMax = niceInterval * numGridLines;
+            }
+
+            // Vẽ các đường lưới ngang và nhãn trục Y (trục tung)
+            for (int i = 0; i <= numGridLines; i++) {
+                int y = height - paddingBottom - (i * chartHeight / numGridLines);
+                long gridValue = i * niceInterval;
+                
+                String gridLabel;
+                if (gridValue >= 1_000_000_000) {
+                    gridLabel = String.format("%.1fB", gridValue / 1_000_000_000.0).replace(',', '.');
+                } else if (gridValue >= 1_000_000) {
+                    gridLabel = String.format("%.1fM", gridValue / 1_000_000.0).replace(',', '.');
+                } else if (gridValue >= 1_000) {
+                    gridLabel = String.format("%.1fK", gridValue / 1_000.0).replace(',', '.');
+                } else {
+                    gridLabel = String.valueOf(gridValue);
+                }
+                if (gridLabel.endsWith(".0K")) gridLabel = gridLabel.replace(".0K", "K");
+                if (gridLabel.endsWith(".0M")) gridLabel = gridLabel.replace(".0M", "M");
+                if (gridLabel.endsWith(".0B")) gridLabel = gridLabel.replace(".0B", "B");
+
+                // Vẽ nhãn trục tung
+                g2.setColor(UITheme.TEXT_MUTED);
+                int labelWidth = fm.stringWidth(gridLabel);
+                g2.drawString(gridLabel, paddingLeft - labelWidth - 10, y + 5);
+
+                // Vẽ đường lưới (grid line) mờ
+                g2.setColor(new Color(UITheme.BORDER.getRed(), UITheme.BORDER.getGreen(), UITheme.BORDER.getBlue(), 50));
+                g2.drawLine(paddingLeft, y, width - paddingRight, y);
+            }
+
+            // Vẽ trục tung và trục hoành đậm hơn để hiển thị rõ
+            g2.setColor(UITheme.TEXT_PRIMARY); // Nổi bật hơn
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.drawLine(paddingLeft, paddingTop, paddingLeft, height - paddingBottom);
+            g2.drawLine(paddingLeft, height - paddingBottom, width - paddingRight, height - paddingBottom);
+            g2.setStroke(new BasicStroke(1f));
 
             int barCount = labels.length;
             int maxBarWidth = 50;
@@ -460,9 +590,9 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
             if (barWidth < 5) barWidth = 5;
 
             for (int i = 0; i < barCount; i++) {
-                int barHeight = (int) (((double) values[i] / maxValue) * chartHeight);
-                int x = padding + i * spacing + (spacing - barWidth) / 2;
-                int y = height - padding - barHeight;
+                int barHeight = (int) (((double) values[i] / renderMax) * chartHeight);
+                int x = paddingLeft + i * spacing + (spacing - barWidth) / 2;
+                int y = height - paddingBottom - barHeight;
 
                 // Vẽ bar
                 g2.setColor(UITheme.ACCENT);
@@ -473,13 +603,14 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
 
                 // Vẽ label trục X
                 g2.setColor(UITheme.TEXT_MUTED);
-                g2.setFont(UITheme.fontBody(12));
-                FontMetrics fm = g2.getFontMetrics();
                 int labelWidth = fm.stringWidth(labels[i]);
-                g2.drawString(labels[i], x + (barWidth - labelWidth) / 2, height - padding + 20);
+                g2.drawString(labels[i], x + (barWidth - labelWidth) / 2, height - paddingBottom + 20);
 
                 // Vẽ giá trị trên cột
                 String valStr = String.valueOf(values[i]);
+                if (values[i] >= 1000) {
+                     valStr = String.format("%,d", values[i]).replace(',', '.');
+                }
                 int valWidth = fm.stringWidth(valStr);
                 g2.setColor(UITheme.TEXT_PRIMARY);
                 g2.drawString(valStr, x + (barWidth - valWidth) / 2, y - 5);

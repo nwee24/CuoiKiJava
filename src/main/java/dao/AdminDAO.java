@@ -87,7 +87,7 @@ public class AdminDAO {
                 String label = rs.getString("label");
                 BigDecimal total = rs.getBigDecimal("total");
                 if (total == null) total = BigDecimal.ZERO;
-                int val = total.intValue();
+                long val = total.longValue();
                 
                 // Nếu là tháng (MM/YYYY), ta có thể rút gọn thành T.MM hoặc giữ nguyên
                 if (filter.equals("MONTH")) {
