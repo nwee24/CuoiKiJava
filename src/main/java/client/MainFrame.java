@@ -113,22 +113,67 @@ public class MainFrame extends JFrame implements NetworkClient.MessageListener {
             // Khử răng cưa font chữ hệ thống
             System.setProperty("awt.useSystemAAFontSettings", "on");
             System.setProperty("swing.aatext", "true");
-            
-            // Thiết lập Look and Feel hiện đại tối giản
+
+            // ── BƯỚC 1: Thiết lập FlatDarkLaf ──────────────────────────────────
             FlatDarkLaf.setup();
-            
-            // Tự động bo tròn cho các Swing component mặc định
-            UIManager.put("Button.arc", 16);
-            UIManager.put("Component.arc", 12);
-            UIManager.put("TextComponent.arc", 12);
-            UIManager.put("ScrollBar.thumbArc", 12);
-            UIManager.put("ScrollBar.trackArc", 12);
-            UIManager.put("ScrollBar.width", 10);
-            
-            // Custom font mặc định thanh thoát
-            Font systemFont = new Font("Segoe UI", Font.PLAIN, 13);
-            UIManager.put("defaultFont", systemFont);
-            
+
+            // ── BƯỚC 2: Custom theme màu cam (#FF6B35) làm accent color ─────────
+            Color accentOrange   = new Color(0xFF6B35);
+            Color accentOrangeDk = new Color(0xE5521A);
+
+            // Focus & selection highlight
+            UIManager.put("Component.focusColor",         accentOrange);
+            UIManager.put("Component.focusedBorderColor", accentOrange);
+
+            // Default button (primary)
+            UIManager.put("Button.default.background",       accentOrange);
+            UIManager.put("Button.default.foreground",       Color.WHITE);
+            UIManager.put("Button.default.hoverBackground",  accentOrangeDk);
+            UIManager.put("Button.default.pressedBackground",accentOrangeDk);
+            UIManager.put("Button.default.focusedBackground",accentOrange);
+
+            // ── Bo góc button & input ─────────────────────────────────────────
+            UIManager.put("Button.arc",           12);
+            UIManager.put("Component.arc",        10);
+            UIManager.put("TextComponent.arc",    10);
+
+            // ── Scrollbar bo tròn hoàn toàn ───────────────────────────────────
+            UIManager.put("ScrollBar.thumbArc",   999);
+            UIManager.put("ScrollBar.trackArc",   999);
+            UIManager.put("ScrollBar.width",      10);
+            UIManager.put("ScrollBar.thumbInsets", new Insets(2, 2, 2, 2));
+
+            // ── Background tổng thể tông tối ─────────────────────────────────
+            UIManager.put("Panel.background",          new Color(0x0F0F1A));
+            UIManager.put("RootPane.background",       new Color(0x0F0F1A));
+            UIManager.put("OptionPane.background",     new Color(0x1A1A2E));
+            UIManager.put("Table.background",          new Color(0x1A1A2E));
+            UIManager.put("Table.alternateRowColor",   new Color(0x16213E));
+            UIManager.put("Table.selectionBackground", new Color(0xFF6B35, false));
+            UIManager.put("Table.selectionForeground", Color.WHITE);
+
+            // ── Font mặc định ─────────────────────────────────────────────────
+            UIManager.put("defaultFont", new Font("Segoe UI", Font.PLAIN, 13));
+
+            // ── Thanh tiêu đề bảng ────────────────────────────────────────────
+            UIManager.put("TableHeader.background",      new Color(0x0F0F1A));
+            UIManager.put("TableHeader.font",
+                new Font("Segoe UI", Font.BOLD, 12));
+
+            // ── TabbedPane accent ─────────────────────────────────────────────
+            UIManager.put("TabbedPane.selectedForeground",  accentOrange);
+            UIManager.put("TabbedPane.underlineColor",      accentOrange);
+            UIManager.put("TabbedPane.focusColor",          new Color(0xFF6B35, false));
+
+            // ── TextField height (min 36px via insets) ────────────────────────
+            UIManager.put("TextField.minimumWidth", 80);
+
+            // ── ProgressBar / Slider accent ───────────────────────────────────
+            UIManager.put("ProgressBar.foreground", accentOrange);
+            UIManager.put("Slider.foreground",      accentOrange);
+            UIManager.put("CheckBox.icon.selectedBackground",    accentOrange);
+            UIManager.put("RadioButton.icon.selectedBackground", accentOrange);
+
         } catch (Exception e) {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());

@@ -8,6 +8,7 @@ import java.awt.event.*;
 import java.awt.geom.*;
 import java.util.HashMap;
 import java.util.Map;
+import net.miginfocom.swing.MigLayout;
 
 public class LoginPanel extends JPanel implements NetworkClient.MessageListener {
     private MainFrame mainFrame;
@@ -107,86 +108,58 @@ public class LoginPanel extends JPanel implements NetworkClient.MessageListener 
         cardPanel.add(leftPanel);
 
         // ======== CỘT PHẢI (FORM NHẬP LIỆU) ========
-        JPanel rightPanel = new JPanel(new GridBagLayout());
+        JPanel rightPanel = new JPanel(new MigLayout("wrap 1, insets 40, gap 12, fill", "[grow]", "[]20[][]20[][]20[][]20[]push[]"));
         rightPanel.setOpaque(false);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(8, 40, 8, 40);
 
         // Header Title
         JLabel title = new JLabel("Đăng nhập", SwingConstants.CENTER);
         title.setFont(UITheme.fontBold(28));
         title.setForeground(UITheme.TEXT_PRIMARY);
-        gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
-        gbc.insets = new Insets(20, 40, 5, 40);
-        rightPanel.add(title, gbc);
+        rightPanel.add(title, "growx");
 
         JLabel subTitle = new JLabel("Chào mừng bạn trở lại hệ thống", SwingConstants.CENTER);
         subTitle.setFont(UITheme.fontBody(14));
         subTitle.setForeground(UITheme.TEXT_MUTED);
-        gbc.gridy = 1;
-        gbc.insets = new Insets(0, 40, 30, 40);
-        rightPanel.add(subTitle, gbc);
-
-        gbc.gridwidth = 1;
-        gbc.insets = new Insets(5, 40, 2, 40);
+        rightPanel.add(subTitle, "growx");
 
         // Username
-        gbc.gridy = 2;
-        JLabel lblUser = new JLabel("Tên đăng nhập / Email");
-        lblUser.setFont(UITheme.fontBold(13));
-        lblUser.setForeground(UITheme.TEXT_MUTED);
-        rightPanel.add(lblUser, gbc);
+        rightPanel.add(fieldLabel("Tên đăng nhập / Email"), "growx");
         
-        gbc.gridy = 3;
         txtUsername = UITheme.customTextField("Nhập tên đăng nhập...", UITheme.BG_DARK, UITheme.BORDER);
-        rightPanel.add(txtUsername, gbc);
+        rightPanel.add(txtUsername, "growx, h 46!");
 
         // Password
-        gbc.gridy = 4;
-        gbc.insets = new Insets(15, 40, 2, 40);
-        JLabel lblPass = new JLabel("Mật khẩu");
-        lblPass.setFont(UITheme.fontBold(13));
-        lblPass.setForeground(UITheme.TEXT_MUTED);
-        rightPanel.add(lblPass, gbc);
+        rightPanel.add(fieldLabel("Mật khẩu"), "growx");
 
-        gbc.gridy = 5;
-        gbc.insets = new Insets(5, 40, 5, 40);
         txtPassword = UITheme.customPasswordField("Nhập mật khẩu...", UITheme.BG_DARK, UITheme.BORDER);
-        rightPanel.add(txtPassword, gbc);
+        rightPanel.add(txtPassword, "growx, h 46!");
 
         // Status
-        gbc.gridy = 6;
-        gbc.insets = new Insets(8, 40, 8, 40);
         lblStatus = new JLabel(" ");
         lblStatus.setFont(UITheme.fontBody(12));
         lblStatus.setForeground(UITheme.DANGER);
         lblStatus.setHorizontalAlignment(SwingConstants.CENTER);
-        rightPanel.add(lblStatus, gbc);
+        rightPanel.add(lblStatus, "growx");
 
         // Button Login
-        gbc.gridy = 7;
-        gbc.insets = new Insets(10, 40, 20, 40);
-        btnLogin = UITheme.customBtn("Đăng nhập  →", UITheme.ACCENT, UITheme.ACCENT_LIGHT, Color.WHITE, 35);
-        rightPanel.add(btnLogin, gbc);
+        btnLogin = UITheme.customBtn("Đăng nhập  →", UITheme.ACCENT, UITheme.ACCENT_DARK, Color.WHITE, 35);
+        rightPanel.add(btnLogin, "growx, h 46!");
 
         // Register Link
-        gbc.gridy = 8;
-        gbc.insets = new Insets(20, 40, 20, 40);
-        lblGoRegister = new JLabel("<html>Bạn chưa có tài khoản? <font color='#60A5FA'>Đăng ký ngay</font></html>", SwingConstants.CENTER);
+        lblGoRegister = new JLabel("<html>Bạn chưa có tài khoản? <font color='#FF8C5A'>Đăng ký ngay</font></html>", SwingConstants.CENTER);
         lblGoRegister.setFont(UITheme.fontBody(14));
         lblGoRegister.setForeground(UITheme.TEXT_PRIMARY);
         lblGoRegister.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         lblGoRegister.addMouseListener(new MouseAdapter() {
             public void mouseClicked(MouseEvent e) { mainFrame.switchPanel("REGISTER"); }
             public void mouseEntered(MouseEvent e) {
-                lblGoRegister.setText("<html><u>Bạn chưa có tài khoản? <font color='#93C5FD'>Đăng ký ngay</font></u></html>");
+                lblGoRegister.setText("<html><u>Bạn chưa có tài khoản? <font color='#FF6B35'>Đăng ký ngay</font></u></html>");
             }
             public void mouseExited(MouseEvent e) {
-                lblGoRegister.setText("<html>Bạn chưa có tài khoản? <font color='#60A5FA'>Đăng ký ngay</font></html>");
+                lblGoRegister.setText("<html>Bạn chưa có tài khoản? <font color='#FF8C5A'>Đăng ký ngay</font></html>");
             }
         });
-        rightPanel.add(lblGoRegister, gbc);
+        rightPanel.add(lblGoRegister, "growx");
 
         cardPanel.add(rightPanel);
         

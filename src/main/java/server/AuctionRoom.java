@@ -44,6 +44,7 @@ public class AuctionRoom {
     private int remainingSeconds = 0;
     private int extensionCount = 0;
     private final AtomicBoolean productEnding = new AtomicBoolean(false);
+    private boolean waitingForProducts = false;
 
     private ScheduledExecutorService timerService;
     private ScheduledFuture<?> countdownTask;
@@ -76,9 +77,10 @@ public class AuctionRoom {
     }
 
     public synchronized void nextProduct() {
-        currentProductIndex++;
         productEnding.set(false);
-        if (currentProductIndex < products.size()) {
+        if (currentProductIndex + 1 < products.size()) {
+            waitingForProducts = false;
+            currentProductIndex++;
             SessionProduct sp = products.get(currentProductIndex);
             currentHighestBid = sp.getCurrentHighestBid() != null ? sp.getCurrentHighestBid() : BigDecimal.ZERO;
             currentWinnerId = null;
@@ -99,9 +101,17 @@ public class AuctionRoom {
             broadcastProductChange();
             startTimer();
         } else {
-            System.out.println("[Phòng " + roomId + "] Đã đấu giá hết sản phẩm. Tự động đóng phòng.");
-            doCloseRoom();
+            waitingForProducts = true;
+            System.out.println("[Phòng " + roomId + "] Đã đấu giá hết sản phẩm. Đợi thêm sản phẩm hoặc đóng phòng.");
+            Map<String, String> msg = new HashMap<>();
+            msg.put("roomId", roomId);
+            msg.put("status", "WAITING_FOR_PRODUCTS");
+            broadcast(MessageType.ROOM_STATUS_UPDATE, msg);
         }
+    }
+
+    public boolean isWaitingForProducts() {
+        return waitingForProducts;
     }
 
     /** Moderator gia hạn thủ công */
@@ -191,6 +201,7 @@ public class AuctionRoom {
         Map<String, String> msg = new HashMap<>();
         msg.put("roomId", roomId);
         msg.put("productId", String.valueOf(sp.getProductId()));
+        msg.put("sessionProductId", String.valueOf(sp.getId()));
         msg.put("productName", currentProduct != null ? currentProduct.getName() : "Sản phẩm");
         msg.put("finalPrice", currentHighestBid.toString());
         msg.put("winnerName", currentWinnerName != null ? currentWinnerName : "Không có người mua");
@@ -241,6 +252,31 @@ public class AuctionRoom {
         broadcast(MessageType.BID_UPDATE, msg);
     }
 
+    private String getProductListForClient() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < products.size(); i++) {
+            SessionProduct sp = products.get(i);
+            Product p = productDAO.findById(sp.getProductId());
+            String pName = p != null ? p.getName() : "Sản phẩm #" + sp.getProductId();
+            String status = "WAITING";
+            if (i < currentProductIndex) status = "ENDED";
+            else if (i == currentProductIndex) status = "CURRENT";
+            
+            if (sb.length() > 0) sb.append("|");
+            sb.append(sp.getProductId()).append(",")
+              .append(pName.replace(",", ";").replace("|", "/")).append(",")
+              .append(status);
+        }
+        return sb.toString();
+    }
+
+    public void broadcastProductListUpdate() {
+        Map<String, String> msg = new HashMap<>();
+        msg.put("roomId", roomId);
+        msg.put("roomProducts", getProductListForClient());
+        broadcast(MessageType.ROOM_PRODUCT_LIST_UPDATE, msg);
+    }
+
     private void broadcastProductChange() {
         SessionProduct sp = products.get(currentProductIndex);
         Map<String, String> msg = new HashMap<>();
@@ -264,7 +300,49 @@ public class AuctionRoom {
         // Index thứ tự
         msg.put("productIndex", String.valueOf(currentProductIndex + 1));
         msg.put("totalProducts", String.valueOf(products.size()));
+        msg.put("roomProducts", getProductListForClient());
         broadcast(MessageType.PRODUCT_CHANGE, msg);
+    }
+
+    public synchronized void sendCurrentStateToClient(ClientHandler client) {
+        if (currentProductIndex >= 0 && currentProductIndex < products.size() && !waitingForProducts) {
+            SessionProduct sp = products.get(currentProductIndex);
+            Map<String, String> msg = new HashMap<>();
+            msg.put("roomId", roomId);
+            msg.put("productId", String.valueOf(sp.getProductId()));
+            msg.put("startingPrice", currentHighestBid.toString());
+
+            if (currentProduct != null) {
+                msg.put("productName",  currentProduct.getName()        != null ? currentProduct.getName() : "");
+                msg.put("description",  currentProduct.getDescription() != null ? currentProduct.getDescription() : "");
+                msg.put("imageData",    currentProduct.getImageData()   != null ? currentProduct.getImageData() : "");
+                msg.put("sellerName",   currentSellerName != null ? currentSellerName : "");
+            } else {
+                msg.put("productName", "Sản phẩm #" + sp.getProductId());
+                msg.put("description", "");
+                msg.put("imageData", "");
+                msg.put("sellerName", "");
+            }
+
+            msg.put("productIndex", String.valueOf(currentProductIndex + 1));
+            msg.put("totalProducts", String.valueOf(products.size()));
+            msg.put("roomProducts", getProductListForClient());
+            client.sendMessage(XmlMessageParser.serialize(MessageType.PRODUCT_CHANGE, msg));
+            
+            // Sync bid state
+            Map<String, String> bidMsg = new HashMap<>();
+            bidMsg.put("roomId", roomId);
+            bidMsg.put("highestBid", currentHighestBid.toString());
+            bidMsg.put("bidderName", currentWinnerName != null ? currentWinnerName : "");
+            bidMsg.put("remainingSeconds", String.valueOf(remainingSeconds));
+            bidMsg.put("extensionCount", String.valueOf(extensionCount));
+            client.sendMessage(XmlMessageParser.serialize(MessageType.BID_UPDATE, bidMsg));
+        } else if (waitingForProducts) {
+            Map<String, String> msg = new HashMap<>();
+            msg.put("roomId", roomId);
+            msg.put("status", "WAITING_FOR_PRODUCTS");
+            client.sendMessage(XmlMessageParser.serialize(MessageType.ROOM_STATUS_UPDATE, msg));
+        }
     }
 
     public void broadcast(MessageType type, Map<String, String> fields) {
@@ -273,7 +351,6 @@ public class AuctionRoom {
         for (ClientHandler ch : sellerHandlers) ch.sendMessage(xml);
         for (ClientHandler ch : buyerHandlers) ch.sendMessage(xml);
     }
-
     public String getRoomId() { return roomId; }
     public ClientHandler getModeratorHandler() { return moderatorHandler; }
     public String getTitle() { return title; }
@@ -289,5 +366,11 @@ public class AuctionRoom {
     }
     public int getProductCount() {
         return products.size();
+    }
+    public List<SessionProduct> getProducts() {
+        return products;
+    }
+    public Product getCurrentProduct() {
+        return currentProduct;
     }
 }

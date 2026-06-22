@@ -6,6 +6,9 @@ import javax.swing.table.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.*;
+import net.miginfocom.swing.MigLayout;
+import org.kordamp.ikonli.swing.FontIcon;
+import org.kordamp.ikonli.Ikon;
 
 /**
  * UITheme — Design System trung tâm cho AuctionPro.
@@ -15,62 +18,138 @@ public final class UITheme {
 
     private UITheme() {}
 
+    public static boolean isDarkMode = true;
+
+    public static void applyTheme(boolean dark) {
+        isDarkMode = dark;
+
+        // 1. Đổi FlatLaf theme — đây là cách DUY NHẤT thực sự đổi màu toàn bộ app
+        try {
+            if (dark) {
+                com.formdev.flatlaf.FlatDarkLaf.setup();
+            } else {
+                com.formdev.flatlaf.FlatLightLaf.setup();
+            }
+            // Bo tròn và font sau khi đổi theme
+            UIManager.put("Button.arc",        12);
+            UIManager.put("Component.arc",     10);
+            UIManager.put("TextComponent.arc", 10);
+            UIManager.put("ScrollBar.thumbArc", 999);
+            UIManager.put("ScrollBar.trackArc", 999);
+            UIManager.put("ScrollBar.width",   10);
+            UIManager.put("defaultFont",        new Font("Segoe UI", Font.PLAIN, 13));
+            // Accent cam
+            Color acc   = ACCENT;      // #FF6B35
+            Color accDk = ACCENT_DARK; // #E5521A
+            UIManager.put("Component.focusColor",            acc);
+            UIManager.put("Component.focusedBorderColor",    acc);
+            UIManager.put("Button.default.background",       acc);
+            UIManager.put("Button.default.foreground",       Color.WHITE);
+            UIManager.put("Button.default.hoverBackground",  accDk);
+            UIManager.put("Button.default.pressedBackground",accDk);
+            UIManager.put("TabbedPane.selectedForeground",   acc);
+            UIManager.put("TabbedPane.underlineColor",       acc);
+            UIManager.put("CheckBox.icon.selectedBackground",    acc);
+            UIManager.put("RadioButton.icon.selectedBackground", acc);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 2. Cập nhật bảng màu UITheme để các component tự vẽ (paintComponent) dùng màu mới
+        if (dark) {
+            BG_DEEP    = new Color(9, 9, 11);     // Zinc 950
+            BG_DARK    = new Color(24, 24, 27);    // Zinc 900
+            BG_CARD    = new Color(39, 39, 42);    // Zinc 800
+            BG_ELEVATED= new Color(63, 63, 70);    // Zinc 700
+            BG_ROW_ALT = new Color(39, 39, 42);
+            TEXT_PRIMARY = new Color(250, 250, 250); // Zinc 50
+            TEXT_MUTED   = new Color(161, 161, 170); // Zinc 400
+            TEXT_HINT    = new Color(113, 113, 122); // Zinc 500
+            BORDER       = new Color(63, 63, 70);    // Zinc 700
+            BORDER_LIGHT = new Color(82, 82, 91);    // Zinc 600
+        } else {
+            BG_DEEP    = new Color(244, 244, 245);   // Zinc 100
+            BG_DARK    = new Color(255, 255, 255);   // White
+            BG_CARD    = new Color(255, 255, 255);   // White
+            BG_ELEVATED= new Color(228, 228, 231);   // Zinc 200
+            BG_ROW_ALT = new Color(250, 250, 250);   // Zinc 50
+            TEXT_PRIMARY = new Color(24, 24, 27);    // Zinc 900
+            TEXT_MUTED   = new Color(113, 113, 122); // Zinc 500
+            TEXT_HINT    = new Color(161, 161, 170); // Zinc 400
+            BORDER       = new Color(228, 228, 231); // Zinc 200
+            BORDER_LIGHT = new Color(212, 212, 216); // Zinc 300
+        }
+
+        USER_AVATAR   = ACCENT;
+        MOD_AVATAR    = AMBER;
+        ADMIN_AVATAR  = DANGER;
+
+        // 3. Refresh toàn bộ cửa sổ đang mở
+        for (java.awt.Window w : java.awt.Window.getWindows()) {
+            SwingUtilities.updateComponentTreeUI(w);
+            w.repaint();
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════════════════
     //  PALETTE
     // ══════════════════════════════════════════════════════════════════════════
 
     /** Nền sâu nhất (Sidebar, outer frame) */
-    public static final Color BG_DEEP    = new Color(9, 13, 22);
+    public static Color BG_DEEP    = new Color(9, 13, 22);
     /** Nền trang chính (Page main background) */
-    public static final Color BG_DARK    = new Color(15, 23, 42);
+    public static Color BG_DARK    = new Color(15, 23, 42);
     /** Nền card, sidebar items, panels */
-    public static final Color BG_CARD    = new Color(30, 41, 59);
+    public static Color BG_CARD    = new Color(30, 41, 59);
     /** Nền header, panel phụ nổi lên */
-    public static final Color BG_ELEVATED= new Color(51, 65, 85);
+    public static Color BG_ELEVATED= new Color(51, 65, 85);
     /** Hàng xen kẽ trong bảng */
-    public static final Color BG_ROW_ALT = new Color(22, 32, 51);
+    public static Color BG_ROW_ALT = new Color(22, 32, 51);
 
-    /** Accent chính – Blue 500 */
-    public static final Color ACCENT       = new Color(59, 130, 246);
-    /** Accent nhạt – Blue 400 */
-    public static final Color ACCENT_LIGHT = new Color(96, 165, 250);
-    /** Accent đậm – Blue 700 */
-    public static final Color ACCENT_DARK  = new Color(29, 78, 216);
+    /** Accent chính – Cam #FF6B35 */
+    public static Color ACCENT       = new Color(0xFF6B35);
+    /** Accent nhạt – Cam nhạt #FF8C5A */
+    public static Color ACCENT_LIGHT = new Color(0xFF8C5A);
+    /** Accent đậm – Cam đậm #E5521A */
+    public static Color ACCENT_DARK  = new Color(0xE5521A);
+    /** Nền active sidebar item (cam mờ alpha=40) */
+    public static Color SIDEBAR_ACTIVE_BG = new Color(255, 107, 53, 40);
+
 
     /** Text trắng chính */
-    public static final Color TEXT_PRIMARY = new Color(248, 250, 252);
+    public static Color TEXT_PRIMARY = new Color(250, 250, 250);
     /** Text phụ xám */
-    public static final Color TEXT_MUTED   = new Color(148, 163, 184);
+    public static Color TEXT_MUTED   = new Color(161, 161, 170);
     /** Text hint nhạt */
-    public static final Color TEXT_HINT    = new Color(100, 116, 139);
+    public static Color TEXT_HINT    = new Color(113, 113, 122);
 
     /** Xanh lá – thành công */
-    public static final Color SUCCESS      = new Color(16, 185, 129);
+    public static Color SUCCESS      = new Color(16, 185, 129);
     /** Đỏ hồng – nguy hiểm */
-    public static final Color DANGER       = new Color(239, 68, 68);
+    public static Color DANGER       = new Color(239, 68, 68);
     /** Vàng amber – cảnh báo / moderator */
-    public static final Color AMBER        = new Color(245, 158, 11);
+    public static Color AMBER        = new Color(245, 158, 11);
     /** Xanh dương – thông tin */
-    public static final Color INFO         = new Color(14, 165, 233);
+    public static Color INFO         = new Color(14, 165, 233);
 
-    public static final Color ORANGE       = new Color(249, 115, 22);
-    public static final Color ORANGE_HOVER = new Color(234, 88, 12);
-    public static final Color LIGHT_BG     = new Color(15, 23, 42);
+    public static Color ORANGE       = new Color(249, 115, 22);
+    public static Color ORANGE_HOVER = new Color(234, 88, 12);
+    public static Color LIGHT_BG     = new Color(15, 23, 42);
 
     /** Đường viền subtle */
-    public static final Color BORDER       = new Color(30, 41, 59);
+    public static Color BORDER       = new Color(30, 41, 59);
     /** Đường viền sáng hơn */
-    public static final Color BORDER_LIGHT = new Color(51, 65, 85);
+    public static Color BORDER_LIGHT = new Color(51, 65, 85);
 
     // ══════════════════════════════════════════════════════════════════════════
     //  BACKGROUND CHO TỪNG ROLE
     // ══════════════════════════════════════════════════════════════════════════
     /** Màu avatar User */
-    public static final Color USER_AVATAR   = ACCENT;
+    public static Color USER_AVATAR   = ACCENT;
     /** Màu avatar Moderator */
-    public static final Color MOD_AVATAR    = AMBER;
+    public static Color MOD_AVATAR    = AMBER;
     /** Màu avatar Admin */
-    public static final Color ADMIN_AVATAR  = DANGER;
+    public static Color ADMIN_AVATAR  = DANGER;
 
     // ══════════════════════════════════════════════════════════════════════════
     //  FONTS
@@ -117,6 +196,10 @@ public final class UITheme {
         return makeBtn(text, ACCENT, Color.WHITE, ACCENT_DARK);
     }
 
+    public static JButton primaryBtn(String text, Color bg) {
+        return makeBtn(text, bg, Color.WHITE, bg.darker());
+    }
+
     public static JButton secondaryBtn(String text) {
         JButton btn = new JButton(text) {
             @Override
@@ -125,21 +208,21 @@ public final class UITheme {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color currentBg = getModel().isRollover() ? BG_ELEVATED : BG_CARD;
                 g2.setColor(currentBg);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 24, 24);
                 g2.setColor(BORDER_LIGHT);
                 g2.setStroke(new BasicStroke(1.2f));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 24, 24);
                 super.paintComponent(g);
                 g2.dispose();
             }
         };
-        btn.setFont(fontBody(12));
+        btn.setFont(fontBold(13));
         btn.setForeground(TEXT_MUTED);
         btn.setContentAreaFilled(false);
         btn.setBorderPainted(false);
         btn.setFocusPainted(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(7, 16, 7, 16));
+        btn.setBorder(new EmptyBorder(8, 20, 8, 20));
         btn.addMouseListener(new MouseAdapter() {
             public void mouseEntered(MouseEvent e) { btn.setForeground(TEXT_PRIMARY); }
             public void mouseExited(MouseEvent e)  { btn.setForeground(TEXT_MUTED); }
@@ -180,18 +263,18 @@ public final class UITheme {
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 Color currentBg = getModel().isRollover() ? hoverBg : bg;
                 g2.setColor(currentBg);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 24, 24);
                 super.paintComponent(g);
                 g2.dispose();
             }
         };
-        btn.setFont(fontBold(13));
+        btn.setFont(fontBold(14));
         btn.setForeground(fg);
         btn.setContentAreaFilled(false);
         btn.setBorderPainted(false);
         btn.setFocusPainted(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(10, 22, 10, 22));
+        btn.setBorder(new EmptyBorder(12, 28, 12, 28));
         return btn;
     }
 
@@ -284,7 +367,71 @@ public final class UITheme {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    //  CARD PANEL
+    //  STRUCTURAL CONTAINERS & CARDS
+    // ══════════════════════════════════════════════════════════════════════════
+
+    /** Create a standard card panel using MigLayout */
+    public static JPanel createCardPanel(String layoutConstraints) {
+        JPanel card = new JPanel(new MigLayout(layoutConstraints));
+        card.setBackground(BG_CARD);
+        card.setBorder(BorderFactory.createCompoundBorder(
+            new LineBorder(BORDER, 1, true),
+            new EmptyBorder(24, 24, 24, 24)
+        ));
+        // FlatLaf rounded panel styling
+        card.putClientProperty("FlatLaf.style", "arc: 12");
+        return card;
+    }
+
+    /** Create an empty state block */
+    public static JPanel emptyState(Ikon iconObj, String title, String subtitle) {
+        JPanel p = new JPanel(new MigLayout("wrap 1, align center, insets 40", "[center]", "[]12[]4[]"));
+        p.setBackground(null);
+        p.setOpaque(false);
+
+        FontIcon icon = FontIcon.of(iconObj, 56, TEXT_MUTED);
+        p.add(new JLabel(icon));
+
+        JLabel lblTitle = new JLabel(title);
+        lblTitle.setFont(fontTitle(18));
+        lblTitle.setForeground(TEXT_PRIMARY);
+        p.add(lblTitle);
+
+        if (subtitle != null && !subtitle.isEmpty()) {
+            JLabel lblSub = new JLabel(subtitle);
+            lblSub.setFont(fontBody(14));
+            lblSub.setForeground(TEXT_HINT);
+            p.add(lblSub);
+        }
+        return p;
+    }
+
+    /** Create a Pill-style Tab */
+    public static JToggleButton pillTab(String text) {
+        JToggleButton tb = new JToggleButton(text);
+        tb.setFont(fontBold(14));
+        tb.setForeground(TEXT_MUTED);
+        tb.setContentAreaFilled(false);
+        tb.setFocusPainted(false);
+        tb.setBorderPainted(false);
+        tb.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        tb.setBorder(new EmptyBorder(8, 16, 8, 16));
+        
+        tb.addItemListener(e -> {
+            if (tb.isSelected()) {
+                tb.setForeground(ACCENT);
+                tb.putClientProperty("FlatLaf.style", "background: " + String.format("#%06x", SIDEBAR_ACTIVE_BG.getRGB() & 0xFFFFFF) + "; arc: 999");
+                tb.setContentAreaFilled(true);
+            } else {
+                tb.setForeground(TEXT_MUTED);
+                tb.setContentAreaFilled(false);
+            }
+        });
+        return tb;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    //  CARD PANEL (Legacy, kept for compatibility if needed)
     // ══════════════════════════════════════════════════════════════════════════
 
     /** Card panel với viền và tiêu đề */
@@ -345,34 +492,63 @@ public final class UITheme {
     //  NAV BUTTON (sidebar)
     // ══════════════════════════════════════════════════════════════════════════
 
-    public static JButton navBtn(String text) {
-        JButton btn = new JButton(text);
-        btn.setFont(fontBody(13));
+    public static JButton navBtn(String text, Ikon iconObj) {
+        JButton btn = new JButton(text) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                boolean isHover = getModel().isRollover();
+                boolean isActive = getFont().isBold();
+                
+                if (isActive) {
+                    g2.setColor(SIDEBAR_ACTIVE_BG);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                } else if (isHover) {
+                    g2.setColor(BG_ELEVATED);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                }
+                
+                super.paintComponent(g);
+                g2.dispose();
+            }
+        };
+        if (iconObj != null) {
+            btn.setIcon(FontIcon.of(iconObj, 20, TEXT_MUTED));
+            btn.setIconTextGap(12);
+        }
+        btn.setFont(fontBody(14));
         btn.setForeground(TEXT_MUTED);
-        btn.setBackground(null);
-        btn.setOpaque(true);
-        btn.setBackground(BG_DARK);
+        btn.setContentAreaFilled(false);
         btn.setBorderPainted(false);
         btn.setFocusPainted(false);
         btn.setHorizontalAlignment(SwingConstants.LEFT);
         btn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(8, 14, 8, 14));
+        btn.setBorder(new EmptyBorder(10, 16, 10, 16));
         return btn;
     }
 
-    /** Kích hoạt trạng thái active cho nav button */
+    /**
+     * Kích hoạt trạng thái active cho nav button.
+     * Active: background rounded 8px + foreground cam + font bold.
+     */
     public static void setNavActive(JButton btn, boolean active) {
         if (active) {
-            btn.setBackground(new Color(30, 27, 75));
-            btn.setForeground(ACCENT_LIGHT);
-            btn.setFont(fontBold(13));
+            btn.setForeground(ACCENT);
+            btn.setFont(fontBold(14));
+            if (btn.getIcon() instanceof FontIcon) {
+                ((FontIcon)btn.getIcon()).setIconColor(ACCENT);
+            }
         } else {
-            btn.setBackground(BG_DARK);
             btn.setForeground(TEXT_MUTED);
-            btn.setFont(fontBody(13));
+            btn.setFont(fontBody(14));
+            if (btn.getIcon() instanceof FontIcon) {
+                ((FontIcon)btn.getIcon()).setIconColor(TEXT_MUTED);
+            }
         }
+        btn.repaint();
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -618,11 +794,15 @@ public final class UITheme {
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             
-            int shadowSize = 4;
+            int shadowSize = 8;
+            int shadowOpacity = 30; // base opacity
+
             // Draw soft shadows outside
             for (int i = 0; i < shadowSize; i++) {
-                g2.setColor(new Color(0, 0, 0, 10 - i * 2));
-                g2.fillRoundRect(shadowSize - i, shadowSize - i + 1, getWidth() - (shadowSize - i) * 2, getHeight() - (shadowSize - i) * 2, radius, radius);
+                int alpha = (int)(shadowOpacity * (1.0f - (float)i / shadowSize));
+                g2.setColor(new Color(0, 0, 0, Math.max(0, alpha)));
+                int offset = shadowSize - i;
+                g2.fillRoundRect(offset, offset + 2, getWidth() - offset * 2, getHeight() - offset * 2, radius, radius);
             }
             
             // Draw actual card background inside the shadow boundaries

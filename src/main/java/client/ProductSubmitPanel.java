@@ -7,6 +7,8 @@ import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
+import org.kordamp.ikonli.feather.Feather;
+import org.kordamp.ikonli.swing.FontIcon;
 
 /**
  * ProductSubmitPanel - Quản lý sản phẩm với tabs: Gửi Yêu Cầu | Đã Duyệt | Đã Bán | Từ Chối
@@ -14,7 +16,7 @@ import java.util.Map;
 public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageListener {
     
     private JTabbedPane tabbedPane;
-    private DefaultTableModel modelApproved, modelSold, modelRejected;
+    private DefaultTableModel modelPending, modelApproved, modelAuctioning, modelSold, modelRejected;
     private ProductSubmitForm submitForm;
 
     public ProductSubmitPanel() {
@@ -26,19 +28,20 @@ public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageL
         loadProducts();
     }
 
+    // ... inside buildUI ...
     private void buildUI() {
         tabbedPane = new JTabbedPane();
         tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 12));
         tabbedPane.setBackground(UITheme.BG_CARD);
         
-        // Tab 1: Gửi yêu cầu mới
         submitForm = new ProductSubmitForm();
-        tabbedPane.addTab("📝 Gửi Yêu Cầu", submitForm);
+        tabbedPane.addTab("Gửi Yêu Cầu", FontIcon.of(Feather.EDIT_2, 16, UITheme.TEXT_MUTED), submitForm);
         
-        // Tab 2, 3, 4: Danh sách sản phẩm
-        tabbedPane.addTab("✅ Đã Duyệt", buildProductListTab("APPROVED"));
-        tabbedPane.addTab("💰 Đã Bán", buildProductListTab("SOLD"));
-        tabbedPane.addTab("❌ Từ Chối", buildProductListTab("REJECTED"));
+        tabbedPane.addTab("Chờ Duyệt", FontIcon.of(Feather.CLOCK, 16, UITheme.TEXT_MUTED), buildProductListTab("PENDING"));
+        tabbedPane.addTab("Đã Duyệt", FontIcon.of(Feather.CHECK_CIRCLE, 16, UITheme.TEXT_MUTED), buildProductListTab("APPROVED"));
+        tabbedPane.addTab("Đang Đấu Giá", FontIcon.of(Feather.ACTIVITY, 16, UITheme.TEXT_MUTED), buildProductListTab("AUCTIONING"));
+        tabbedPane.addTab("Đã Bán", FontIcon.of(Feather.DOLLAR_SIGN, 16, UITheme.TEXT_MUTED), buildProductListTab("SOLD"));
+        tabbedPane.addTab("Từ Chối", FontIcon.of(Feather.X_CIRCLE, 16, UITheme.TEXT_MUTED), buildProductListTab("REJECTED"));
         
         add(tabbedPane, BorderLayout.CENTER);
     }
@@ -52,24 +55,36 @@ public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageL
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
         
-        JTable table = new JTable(model);
-        table.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        table.setRowHeight(36);
-        table.setBackground(UITheme.BG_CARD);
-        table.setSelectionBackground(new Color(255, 247, 237));
-        table.setSelectionForeground(UITheme.ACCENT_DARK);
-        table.setGridColor(UITheme.BORDER);
-        table.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 11));
-        table.getTableHeader().setBackground(new Color(249, 250, 251));
+        JTable table = UITheme.styledTable(model);
+        panel.add(UITheme.styledScrollPane(table), BorderLayout.CENTER);
         
-        JScrollPane scroll = new JScrollPane(table);
-        scroll.setBorder(new LineBorder(UITheme.BORDER, 1));
-        panel.add(scroll, BorderLayout.CENTER);
-        
-        if ("APPROVED".equals(status)) {
+        if ("PENDING".equals(status)) {
+            modelPending = model;
+        } else if ("APPROVED".equals(status)) {
             modelApproved = model;
+        } else if ("AUCTIONING".equals(status)) {
+            modelAuctioning = model;
         } else if ("SOLD".equals(status)) {
             modelSold = model;
+            JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            actionPanel.setBackground(UITheme.BG_CARD);
+            JButton btnResale = UITheme.primaryBtn("Yêu cầu bán lại");
+            btnResale.addActionListener(e -> {
+                int row = table.getSelectedRow();
+                if (row >= 0) {
+                    String id = (String) model.getValueAt(row, 0);
+                    int confirm = JOptionPane.showConfirmDialog(panel, "Bạn muốn yêu cầu bán lại sản phẩm này?", "Xác nhận", JOptionPane.YES_NO_OPTION);
+                    if (confirm == JOptionPane.YES_OPTION) {
+                        Map<String, String> req = new HashMap<>();
+                        req.put("productId", id);
+                        NetworkClient.getInstance().sendMessage(MessageType.REQUEST_RESALE, req);
+                    }
+                } else {
+                    JOptionPane.showMessageDialog(panel, "Vui lòng chọn sản phẩm trong danh sách!");
+                }
+            });
+            actionPanel.add(btnResale);
+            panel.add(actionPanel, BorderLayout.SOUTH);
         } else if ("REJECTED".equals(status)) {
             modelRejected = model;
         }
@@ -100,7 +115,9 @@ public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageL
     }
 
     private void updateProductTables(String productsStr) {
+        modelPending.setRowCount(0);
         modelApproved.setRowCount(0);
+        modelAuctioning.setRowCount(0);
         modelSold.setRowCount(0);
         modelRejected.setRowCount(0);
         
@@ -115,9 +132,13 @@ public class ProductSubmitPanel extends JPanel implements NetworkClient.MessageL
                     
                     Object[] row = {id, name, price + " VND", status};
                     
-                    if ("APPROVED".equals(status)) {
+                    if ("PENDING".equals(status)) {
+                        modelPending.addRow(row);
+                    } else if ("APPROVED".equals(status)) {
                         modelApproved.addRow(row);
-                    } else if ("SOLD".equals(status)) {
+                    } else if ("AUCTIONING".equals(status)) {
+                        modelAuctioning.addRow(row);
+                    } else if ("SOLD".equals(status) || "COMPLETED".equals(status)) {
                         modelSold.addRow(row);
                     } else if ("REJECTED".equals(status)) {
                         modelRejected.addRow(row);

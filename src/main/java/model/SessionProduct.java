@@ -11,10 +11,11 @@ public class SessionProduct {
     private Integer winnerId;
     private BigDecimal finalPrice;
     private String status;
+    private String transactionStatus;
 
     public SessionProduct() {}
 
-    public SessionProduct(int id, int sessionId, int productId, int orderIndex, BigDecimal currentHighestBid, Integer winnerId, BigDecimal finalPrice, String status) {
+    public SessionProduct(int id, int sessionId, int productId, int orderIndex, BigDecimal currentHighestBid, Integer winnerId, BigDecimal finalPrice, String status, String transactionStatus) {
         this.id = id;
         this.sessionId = sessionId;
         this.productId = productId;
@@ -23,6 +24,7 @@ public class SessionProduct {
         this.winnerId = winnerId;
         this.finalPrice = finalPrice;
         this.status = status;
+        this.transactionStatus = transactionStatus;
     }
 
     public int getId() { return id; }
@@ -48,4 +50,7 @@ public class SessionProduct {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public String getTransactionStatus() { return transactionStatus; }
+    public void setTransactionStatus(String transactionStatus) { this.transactionStatus = transactionStatus; }
 }

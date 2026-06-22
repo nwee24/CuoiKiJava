@@ -108,6 +108,25 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         lblChatTarget.setFont(new Font("Segoe UI", Font.BOLD, 14));
         lblChatTarget.setForeground(TEXT_DARK);
         lblChatTarget.setAlignmentX(Component.LEFT_ALIGNMENT);
+        lblChatTarget.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (isPrivateChat && currentReceiverUsername != null) {
+                    UserDashboard ud = (UserDashboard) SwingUtilities.getAncestorOfClass(UserDashboard.class, ChatPanel.this);
+                    if (ud != null) {
+                        ud.openRateUserDialogByUsername(currentReceiverUsername);
+                    }
+                }
+            }
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (isPrivateChat) lblChatTarget.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                lblChatTarget.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
+            }
+        });
 
         lblStatus = new JLabel("Đang chờ...");
         lblStatus.setFont(new Font("Segoe UI", Font.PLAIN, 11));
@@ -186,18 +205,29 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             public void mouseExited(MouseEvent e)  { btnEmoji.setOpaque(false); }
         });
 
-        // Text input styled like a light text field
+        // Text input styled like a modern pill
         txtInput = new JTextArea(2, 1);
         txtInput.setBackground(BG_INPUT);
         txtInput.setForeground(TEXT_DARK);
         txtInput.setCaretColor(SEND_BTN);
-        txtInput.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        txtInput.setFont(new Font("Segoe UI", Font.PLAIN, 15));
         txtInput.setLineWrap(true);
         txtInput.setWrapStyleWord(true);
-        txtInput.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(BORDER_CLR, 1, true),
-            new EmptyBorder(8, 12, 8, 12)
-        ));
+        txtInput.setBorder(new EmptyBorder(8, 16, 8, 16));
+
+        JScrollPane inputScroll = new JScrollPane(txtInput) {
+            @Override
+            protected void paintBorder(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(BORDER_CLR);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 24, 24);
+                g2.dispose();
+            }
+        };
+        inputScroll.setBorder(new EmptyBorder(1, 1, 1, 1));
+        inputScroll.setOpaque(false);
+        inputScroll.getViewport().setOpaque(false);
 
         // Enter = send, Shift+Enter = new line
         txtInput.addKeyListener(new KeyAdapter() {
@@ -209,10 +239,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             }
         });
 
-        JScrollPane inputScroll = new JScrollPane(txtInput);
-        inputScroll.setBorder(null);
-        inputScroll.setBackground(BG_INPUT);
-        inputScroll.getViewport().setBackground(BG_INPUT);
+
 
         // Send button — filled orange circle
         btnSend = new JButton(">") {
@@ -251,7 +278,8 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         this.isPrivateChat = false;
         messages.clear();
         SwingUtilities.invokeLater(() -> {
-            lblChatTarget.setText("🏛 Phòng: " + roomId);
+            lblChatTarget.setIcon(org.kordamp.ikonli.swing.FontIcon.of(org.kordamp.ikonli.feather.Feather.HOME, 18, UITheme.AMBER));
+            lblChatTarget.setText("Phòng: " + roomId);
             lblStatus.setText("● Chat chung phòng đấu giá");
             lblStatus.setForeground(ONLINE_DOT);
             messagesPanel.removeAll();
@@ -264,7 +292,8 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         this.isPrivateChat = true;
         messages.clear();
         SwingUtilities.invokeLater(() -> {
-            lblChatTarget.setText("💬 " + targetUsername);
+            lblChatTarget.setIcon(org.kordamp.ikonli.swing.FontIcon.of(org.kordamp.ikonli.feather.Feather.MESSAGE_SQUARE, 18, UITheme.INFO));
+            lblChatTarget.setText(targetUsername);
             lblStatus.setText("● Trực tuyến");
             lblStatus.setForeground(ONLINE_DOT);
             messagesPanel.removeAll();
@@ -389,19 +418,31 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             @Override protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(bubbleColor);
-                g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 18, 18));
-                if (!isMe) {
+                
+                if (isMe) {
+                    // Gradient for my bubbles
+                    GradientPaint gp = new GradientPaint(0, 0, UITheme.ACCENT_LIGHT, getWidth(), getHeight(), UITheme.ACCENT_DARK);
+                    g2.setPaint(gp);
+                    // Asymmetrical border for iMessage feel
+                    g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 24, 24));
+                    g2.fillRect(getWidth() - 12, getHeight() - 12, 12, 12);
+                    g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 24, 24));
+                } else {
+                    g2.setColor(bubbleColor);
+                    g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 24, 24));
+                    g2.fillRect(0, getHeight() - 12, 12, 12);
+                    g2.fill(new RoundRectangle2D.Double(0, 0, getWidth(), getHeight(), 24, 24));
+                    
                     g2.setColor(BORDER_CLR);
                     g2.setStroke(new BasicStroke(1f));
-                    g2.draw(new RoundRectangle2D.Double(0, 0, getWidth()-1, getHeight()-1, 18, 18));
+                    g2.draw(new RoundRectangle2D.Double(0, 0, getWidth()-1, getHeight()-1, 24, 24));
                 }
                 g2.dispose();
             }
         };
         bubble.setLayout(new BoxLayout(bubble, BoxLayout.Y_AXIS));
         bubble.setOpaque(false);
-        bubble.setBorder(new EmptyBorder(9, 14, 9, 14));
+        bubble.setBorder(new EmptyBorder(10, 16, 10, 16));
 
         JLabel lblContent = new JLabel();
         if (content.length() < 30 && !content.contains("\n")) {

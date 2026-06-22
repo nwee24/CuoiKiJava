@@ -10,6 +10,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import javax.imageio.ImageIO;
+import javax.swing.table.DefaultTableCellRenderer;
 
 public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageListener {
 
@@ -47,6 +48,10 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     private JLabel lblSeller;
     private JLabel lblStartPrice;
     private JLabel lblProgress; // "Sản phẩm 1/3"
+    
+    private JTable tblProducts;
+    private javax.swing.table.DefaultTableModel productListModel;
+    private String currentSellerName = "";
 
     // ─── Bid area (center) ────────────────────────────────────────────────────
     private JLabel lblHighestBid;
@@ -79,7 +84,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
 
         // ── Main split: Left (product) | Center (bid) ────────────────────────
         JSplitPane mainSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,
-            buildProductPanel(), buildBidPanel());
+            buildLeftTabs(), buildBidPanel());
         mainSplit.setDividerLocation(280);
         mainSplit.setDividerSize(4);
         mainSplit.setBorder(null);
@@ -105,6 +110,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         flashTimer = new javax.swing.Timer(500, e -> {
             flashState = !flashState;
             lblCountdown.setForeground(flashState ? DANGER : AMBER);
+            lblHighestBid.setForeground(flashState ? Color.WHITE : SUCCESS);
         });
 
         // Countdown timer: đếm ngược cục bộ mỗi giây, sync với server qua BID_UPDATE
@@ -155,7 +161,20 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     }
 
     // ─── Product Panel (left) ─────────────────────────────────────────────────
-    private JPanel buildProductPanel() {
+    private JTabbedPane buildLeftTabs() {
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.setBackground(BG_PANEL);
+        tabbedPane.setForeground(FG);
+        tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        tabbedPane.setBorder(new MatteBorder(0,0,0,1,BORDER));
+        
+        tabbedPane.addTab("Chi tiết", buildProductDetailPanel());
+        tabbedPane.addTab("Danh sách", buildProductListPanel());
+        
+        return tabbedPane;
+    }
+
+    private JPanel buildProductDetailPanel() {
         JPanel p = new JPanel();
         p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
         p.setBackground(BG_PANEL);
@@ -198,6 +217,53 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         lblStartPrice.setAlignmentX(LEFT_ALIGNMENT);
         p.add(lblStartPrice);
         p.add(Box.createVerticalGlue());
+        return p;
+    }
+
+    private JPanel buildProductListPanel() {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setBackground(BG_PANEL);
+        p.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+        String[] cols = {"ID", "Tên Sản Phẩm", "Trạng Thái"};
+        productListModel = new javax.swing.table.DefaultTableModel(cols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        tblProducts = new JTable(productListModel);
+        tblProducts.setBackground(BG_CARD);
+        tblProducts.setForeground(FG);
+        tblProducts.setFont(FONT_UI);
+        tblProducts.setRowHeight(25);
+        tblProducts.getTableHeader().setBackground(BG_PANEL);
+        tblProducts.getTableHeader().setForeground(FG);
+        tblProducts.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+        
+        tblProducts.getColumnModel().getColumn(0).setMaxWidth(40);
+        
+        // Custom renderer for Status column
+        tblProducts.getColumnModel().getColumn(2).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+                String status = (String) value;
+                if ("CURRENT".equals(status)) {
+                    c.setForeground(AMBER);
+                    c.setFont(c.getFont().deriveFont(Font.BOLD));
+                } else if ("ENDED".equals(status)) {
+                    c.setForeground(MUTED);
+                } else {
+                    c.setForeground(FG);
+                }
+                return c;
+            }
+        });
+
+        JScrollPane sp = new JScrollPane(tblProducts);
+        sp.setBorder(BorderFactory.createLineBorder(BORDER));
+        sp.getViewport().setBackground(BG_CARD);
+        p.add(sp, BorderLayout.CENTER);
+        
         return p;
     }
 
@@ -273,6 +339,14 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         p.setBorder(BorderFactory.createCompoundBorder(
             new MatteBorder(1,0,0,0,BORDER), new EmptyBorder(12, 0, 0, 0)));
 
+        JButton btnStart = new JButton("▶ Bat Dau");
+        styleBtn(btnStart, new Color(20,40,80), new Color(100,150,255));
+        btnStart.addActionListener(e -> {
+            Map<String, String> params = new HashMap<>();
+            params.put("roomId", roomId);
+            NetworkClient.getInstance().sendMessage(MessageType.OPEN_AUCTION, params);
+        });
+
         btnExtend = new JButton("+30s Gia Han");
         styleBtn(btnExtend, new Color(20,60,40), SUCCESS);
         btnExtend.addActionListener(e -> {
@@ -308,6 +382,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         styleBtn(btnAddProduct, new Color(40,20,60), new Color(167,139,250));
         btnAddProduct.addActionListener(e -> openAddProductDialog());
         
+        p.add(btnStart);
         p.add(btnAddProduct);
         p.add(btnExtend);
         p.add(btnNextProduct);
@@ -416,10 +491,15 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         SwingUtilities.invokeLater(() -> {
             switch (type) {
                 case PRODUCT_CHANGE:   handleProductChange(data); break;
+                case ROOM_PRODUCT_LIST_UPDATE: handleRoomProductListUpdate(data); break;
                 case BID_UPDATE:       handleBidUpdate(data); break;
                 case AUCTION_END:      handleAuctionEnd(data); break;
                 case ROOM_STATUS_UPDATE:
-                    if ("CLOSED".equals(data.get("status"))) handleRoomClosed();
+                    if ("CLOSED".equals(data.get("status"))) {
+                        handleRoomClosed();
+                    } else if ("WAITING_FOR_PRODUCTS".equals(data.get("status"))) {
+                        handleWaitingForProducts();
+                    }
                     break;
                 case ERROR:
                     JOptionPane.showMessageDialog(this, "Loi: " + data.get("message"),
@@ -440,6 +520,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         String name   = data.getOrDefault("productName", "Sản phẩm #" + data.get("productId"));
         String desc   = data.getOrDefault("description", "");
         String seller = data.getOrDefault("sellerName", "—");
+        currentSellerName = seller;
         String price  = data.getOrDefault("startingPrice", "0");
         String idx    = data.getOrDefault("productIndex", "?");
         String total  = data.getOrDefault("totalProducts", "?");
@@ -475,8 +556,13 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
                 byte[] b = Base64.getDecoder().decode(img64);
                 BufferedImage bi = ImageIO.read(new ByteArrayInputStream(b));
                 if (bi != null) {
-                    Image scaled = bi.getScaledInstance(240, 200, Image.SCALE_SMOOTH);
-                    lblImage.setIcon(new ImageIcon(scaled));
+                    BufferedImage rounded = new BufferedImage(240, 200, BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2 = rounded.createGraphics();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setClip(new java.awt.geom.RoundRectangle2D.Float(0, 0, 240, 200, 16, 16));
+                    g2.drawImage(bi, 0, 0, 240, 200, null);
+                    g2.dispose();
+                    lblImage.setIcon(new ImageIcon(rounded));
                     lblImage.setText("");
                 }
             } catch (Exception ignored) {
@@ -486,6 +572,27 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         } else {
             lblImage.setIcon(null);
             lblImage.setText("Không có ảnh");
+        }
+        
+        // Update product list
+        String rpStr = data.get("roomProducts");
+        updateProductListModel(rpStr);
+    }
+
+    private void handleRoomProductListUpdate(Map<String, String> data) {
+        String rpStr = data.get("roomProducts");
+        updateProductListModel(rpStr);
+    }
+    
+    private void updateProductListModel(String rpStr) {
+        if (rpStr != null && !rpStr.isEmpty() && productListModel != null) {
+            productListModel.setRowCount(0);
+            for (String pStr : rpStr.split("\\|")) {
+                String[] pParts = pStr.split(",", -1);
+                if (pParts.length >= 3) {
+                    productListModel.addRow(new Object[]{pParts[0], pParts[1].replace(";", ",").replace("/", "|"), pParts[2]});
+                }
+            }
         }
     }
 
@@ -537,6 +644,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         String winner = data.getOrDefault("winnerName", "Không có người mua");
         String price  = data.getOrDefault("finalPrice", "0");
         String pname  = data.getOrDefault("productName", "");
+        String sessionProductId = data.get("sessionProductId");
 
         lblCountdown.setText("Da chot gia");
         lblCountdown.setForeground(SUCCESS);
@@ -555,9 +663,24 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             res.put("roomId", roomId);
             res.put("status", c == JOptionPane.YES_OPTION ? "ACCEPTED" : "REJECTED");
             res.put("finalPrice", price);
+            if (sessionProductId != null) {
+                res.put("sessionProductId", sessionProductId);
+            }
             NetworkClient.getInstance().sendMessage(MessageType.CONFIRM_BUY, res);
             if (c == JOptionPane.YES_OPTION)
                 JOptionPane.showMessageDialog(this, "✅ Cảm ơn bạn đã mua hàng!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
+        } else if (myUsername != null && myUsername.equals(currentSellerName)) {
+            if ("Không có người mua".equals(winner)) {
+                JOptionPane.showMessageDialog(this, 
+                    "Sản phẩm \"" + pname + "\" của bạn không có ai đặt giá và đã bị bỏ qua.", 
+                    "Kết quả đấu giá", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(this, 
+                    "🎉 Sản phẩm \"" + pname + "\" của bạn đã được bán!\n\n"
+                    + "Người mua: " + winner + "\n"
+                    + "Giá chốt: " + formatVnd(price) + " VND", 
+                    "Bán thành công", JOptionPane.INFORMATION_MESSAGE);
+            }
         }
     }
 
@@ -570,6 +693,28 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         if (parent != null && parent.getLayout() instanceof CardLayout) {
             ((CardLayout) parent.getLayout()).show(parent, isModerator ? "MOD_DASHBOARD" : "USER_DASHBOARD");
         }
+    }
+
+    private void handleWaitingForProducts() {
+        flashTimer.stop();
+        countdownTimer.stop();
+        lblCountdown.setText("Chờ thêm sản phẩm");
+        lblCountdown.setForeground(AMBER);
+        
+        lblName.setText("Đang chờ...");
+        lblDesc.setText("<html><p style='width:210px'>Phòng đấu giá hiện tại đã hết sản phẩm. Vui lòng đợi Moderator thêm sản phẩm mới hoặc kết thúc phòng.</p></html>");
+        lblSeller.setText("Người bán: —");
+        lblStartPrice.setText("Giá khởi điểm: —");
+        lblProgress.setText("Phòng: " + roomId + "  |  Chờ SP");
+        lblHighestBid.setText("0 VND");
+        lblBidder.setText("Chưa có người đặt giá");
+        
+        btnPlaceBid.setEnabled(false);
+        txtBidHistory.append("\n[!] Hệ thống: Đang chờ sản phẩm mới...\n");
+        scrollHistory();
+        
+        lblImage.setIcon(null);
+        lblImage.setText("Đang chờ sản phẩm");
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -630,7 +775,11 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             }
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == 0 || column == 4; // Checkbox and Price are editable
+                if (column == 0 || column == 4) {
+                    String name = (String) getValueAt(row, 2);
+                    return !name.endsWith("(Đã thêm)");
+                }
+                return false;
             }
         };
         
@@ -667,7 +816,8 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             
             for (int i = 0; i < tableModel.getRowCount(); i++) {
                 Boolean isSelected = (Boolean) tableModel.getValueAt(i, 0);
-                if (isSelected != null && isSelected) {
+                String name = (String) tableModel.getValueAt(i, 2);
+                if (isSelected != null && isSelected && !name.endsWith("(Đã thêm)")) {
                     if (count > 0) {
                         productIds.append(",");
                         customPrices.append(",");
@@ -690,7 +840,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             data.put("customPrices", customPrices.toString());
             NetworkClient.getInstance().sendMessage(MessageType.ADD_PRODUCT_TO_SESSION, data);
             
-            JOptionPane.showMessageDialog(dialog, "✅ Đã gửi yêu cầu thêm " + count + " sản phẩm!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
+            JOptionPane.showMessageDialog(dialog, "✅ Đã thêm " + count + " sản phẩm!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
             dialog.dispose();
         });
 
@@ -709,21 +859,24 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             public void onMessage(MessageType type, Map<String, String> data) {
                 if (type == MessageType.GET_APPROVED_PRODUCTS_IN_ROOM && roomId.equals(data.get("roomId"))) {
                     SwingUtilities.invokeLater(() -> {
-                        String productsStr = data.get("products");
+                        String productsStr = data.get("productList");
                         tableModel.setRowCount(0);
                         
                         if (productsStr != null && !productsStr.isEmpty()) {
                             String[] products = productsStr.split("\\|");
                             for (String productStr : products) {
                                 String[] parts = productStr.split(",", -1);
-                                if (parts.length >= 5) {
+                                if (parts.length >= 4) {
                                     String id = parts[0];
-                                    String seller = parts[1];
-                                    String name = parts[2].replace(";", ",");
-                                    String price = parts[4];
+                                    String name = parts[1].replace(";", ",");
+                                    String price = parts[2];
+                                    String seller = parts[3];
+                                    // By default we only fetch APPROVED, so isAdded is false
                                     tableModel.addRow(new Object[]{false, id, name, seller, price});
                                 }
                             }
+                        } else {
+                            JOptionPane.showMessageDialog(dialog, "Chưa có sản phẩm nào được duyệt. Vui lòng duyệt sản phẩm trước khi thêm vào phòng.", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
                         }
                         NetworkClient.getInstance().removeListener(this);
                     });

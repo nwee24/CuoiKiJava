@@ -37,7 +37,7 @@ public class AuctionSessionDAO {
 
     // Tìm phiên theo mã phòng (room_id)
     public AuctionSession findByRoomId(String roomId) {
-        String sql = "SELECT * FROM auction_sessions WHERE room_id = ?";
+        String sql = "SELECT * FROM auction_sessions WHERE room_id = ? ORDER BY id DESC LIMIT 1";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, roomId);
@@ -77,13 +77,14 @@ public class AuctionSessionDAO {
 
     // Thêm sản phẩm vào phiên đấu giá
     public boolean addProduct(SessionProduct sp) {
-        String sql = "INSERT INTO session_products (session_id, product_id, order_index, status) VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO session_products (session_id, product_id, order_index, status, current_highest_bid) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setInt(1, sp.getSessionId());
             ps.setInt(2, sp.getProductId());
             ps.setInt(3, sp.getOrderIndex());
             ps.setString(4, sp.getStatus() != null ? sp.getStatus() : "WAITING");
+            ps.setBigDecimal(5, sp.getCurrentHighestBid() != null ? sp.getCurrentHighestBid() : java.math.BigDecimal.ZERO);
             int affected = ps.executeUpdate();
             if (affected > 0) {
                 try (ResultSet rs = ps.getGeneratedKeys()) {
@@ -114,13 +115,33 @@ public class AuctionSessionDAO {
     // Cập nhật người chiến thắng cho sản phẩm trong phiên
     public boolean updateWinner(int sessionProductId, int winnerId, BigDecimal finalPrice, String status) {
         String sql = "UPDATE session_products SET winner_id = ?, final_price = ?, status = ? WHERE id = ?";
+        String sqlProduct = "UPDATE products SET status = 'SOLD' WHERE id = (SELECT product_id FROM session_products WHERE id = ?)";
         try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(sql);
+             PreparedStatement ps2 = conn.prepareStatement(sqlProduct)) {
+            
+            conn.setAutoCommit(false);
             ps.setInt(1, winnerId);
             ps.setBigDecimal(2, finalPrice);
             ps.setString(3, status);
             ps.setInt(4, sessionProductId);
-            return ps.executeUpdate() > 0;
+            int rows = ps.executeUpdate();
+            
+            if (rows > 0) {
+                if ("SOLD".equals(status)) {
+                    ps2.setInt(1, sessionProductId);
+                    ps2.executeUpdate();
+                } else if ("PASSED".equals(status)) {
+                    try (PreparedStatement ps3 = conn.prepareStatement(
+                            "UPDATE products SET status = 'APPROVED' WHERE id = (SELECT product_id FROM session_products WHERE id = ?)")) {
+                        ps3.setInt(1, sessionProductId);
+                        ps3.executeUpdate();
+                    }
+                }
+            }
+            
+            conn.commit();
+            return rows > 0;
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -154,6 +175,7 @@ public class AuctionSessionDAO {
         if (!rs.wasNull()) sp.setWinnerId(wid);
         sp.setFinalPrice(rs.getBigDecimal("final_price"));
         sp.setStatus(rs.getString("status"));
+        sp.setTransactionStatus(rs.getString("transaction_status"));
         return sp;
     }
 }

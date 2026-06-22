@@ -11,14 +11,17 @@ import java.util.List;
 
 public class UserDAO {
     // Đăng ký user mới với mật khẩu mã hóa BCrypt
-    public String register(String username, String password, Role role) {
+    public String register(String username, String password, Role role, String phone, String email, boolean isApproved) {
         String hash = BCrypt.hashpw(password, BCrypt.gensalt());
-        String sql = "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)";
+        String sql = "INSERT INTO users (username, password_hash, role, phone, email, is_approved) VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
             ps.setString(2, hash);
             ps.setString(3, role.name());
+            ps.setString(4, phone);
+            ps.setString(5, email);
+            ps.setBoolean(6, isApproved);
             ps.executeUpdate();
             return "SUCCESS";
         } catch (SQLException e) {
@@ -88,6 +91,19 @@ public class UserDAO {
         }
     }
 
+    // Duyệt User
+    public boolean approveUser(int id) {
+        String sql = "UPDATE users SET is_approved = true WHERE id = ?";
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, id);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     // Cập nhật đánh giá
     public boolean updateRating(int id, BigDecimal newRating, int newCount) {
         String sql = "UPDATE users SET rating = ?, rating_count = ? WHERE id = ?";
@@ -140,10 +156,13 @@ public class UserDAO {
         u.setUsername(rs.getString("username"));
         u.setPasswordHash(rs.getString("password_hash"));
         u.setRole(Role.valueOf(rs.getString("role")));
+        u.setPhone(rs.getString("phone"));
+        u.setEmail(rs.getString("email"));
         u.setRating(rs.getBigDecimal("rating"));
         u.setRatingCount(rs.getInt("rating_count"));
         u.setBalance(rs.getBigDecimal("balance"));
         u.setBanned(rs.getBoolean("is_banned"));
+        u.setApproved(rs.getBoolean("is_approved"));
         u.setCreatedAt(rs.getTimestamp("created_at"));
         return u;
     }

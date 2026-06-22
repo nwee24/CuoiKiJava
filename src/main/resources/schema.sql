@@ -17,10 +17,13 @@ CREATE TABLE users (
     password_hash TEXT          NOT NULL,
     role          VARCHAR(10)   NOT NULL
                                 CHECK (role IN ('USER', 'MODERATOR', 'ADMIN')),
+    phone         VARCHAR(20),
+    email         VARCHAR(100),
     rating        DECIMAL(3,2)  NOT NULL DEFAULT 0.00,
     rating_count  INT           NOT NULL DEFAULT 0,
     balance       DECIMAL(15,2) NOT NULL DEFAULT 0.00,
     is_banned     BOOLEAN       NOT NULL DEFAULT FALSE,
+    is_approved   BOOLEAN       NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMP     NOT NULL DEFAULT NOW()
 );
 
@@ -93,7 +96,9 @@ CREATE TABLE session_products (
     winner_id           INT           REFERENCES users(id) ON DELETE SET NULL,
     final_price         DECIMAL(15,2),
     status              VARCHAR(20)   NOT NULL DEFAULT 'WAITING'
-                                      CHECK (status IN ('WAITING','ACTIVE','SOLD','PASSED'))
+                                      CHECK (status IN ('WAITING','ACTIVE','SOLD','PASSED')),
+    transaction_status  VARCHAR(20)   NOT NULL DEFAULT 'PENDING'
+                                      CHECK (transaction_status IN ('PENDING', 'PAID', 'SHIPPED', 'COMPLETED'))
 );
 
 -- ─────────────────────────────────────────────────────────────

@@ -122,12 +122,15 @@ public class ClientHandler implements Runnable {
                 case GET_USER_LIST: handleGetUserList(); break;
                 case GET_HISTORY: handleGetHistory(); break;
                 case GET_ROOM_DETAIL: handleGetRoomDetail(data); break;
-                case GET_ADMIN_STATS: handleGetAdminStats(); break;
+                case GET_ADMIN_STATS: handleGetAdminStats(data); break;
                 case GET_PENALTY_LIST: handleGetPenaltyList(); break;
                 case CONTACT_MOD: handleContactMod(data); break;
                 case CHAT_PRIVATE: handleChatPrivate(data); break;
                 case CHAT_ROOM: handleChatRoom(data); break;
                 case CONFIRM_BUY: handleConfirmBuy(data); break;
+                case MARK_TRANSACTION_COMPLETED: handleMarkTransactionCompleted(data); break;
+                case RATE_USER: handleRateUser(data); break;
+                case GET_RATINGS: handleGetRatings(data); break;
                 case EXPORT_HISTORY: handleExportHistory(); break;
                 case GET_SELLER_PRODUCTS: handleGetSellerProducts(data); break;
                 case SUBMIT_PRODUCT: handleSubmitProduct(data); break;
@@ -138,6 +141,8 @@ public class ClientHandler implements Runnable {
                 case ADD_PRODUCT_TO_SESSION: handleAddProductToSession(data); break;
                 case APPROVE_PRODUCT: handleApproveProduct(data); break;
                 case REJECT_PRODUCT: handleRejectProduct(data); break;
+                case GET_SUCCESSFUL_TRANSACTIONS: handleGetSuccessfulTransactions(); break;
+                case APPROVE_MOD: handleApproveMod(data); break;
                 default:
                     System.out.println("[ClientHandler] Lệnh bỏ qua hoặc chưa cài đặt chi tiết: " + type);
             }
@@ -154,6 +159,10 @@ public class ClientHandler implements Runnable {
                 sendError("Tài khoản của bạn đã bị khóa.");
                 return;
             }
+            if (!user.isApproved()) {
+                sendError("Tài khoản Moderator của bạn đang chờ Admin duyệt!");
+                return;
+            }
             String token = SessionManager.getInstance().generateToken(user);
             // Đăng ký ClientHandler này vào SessionManager để có thể tìm thấy qua username
             SessionManager.getInstance().registerHandler(user.getUsername(), this);
@@ -168,7 +177,11 @@ public class ClientHandler implements Runnable {
 
     private void handleRegister(Map<String, String> data) {
         Role role = Role.valueOf(data.get("role"));
-        String result = userDAO.register(data.get("username"), data.get("password"), role);
+        String phone = data.getOrDefault("phone", "");
+        String email = data.getOrDefault("email", "");
+        boolean isApproved = (role != Role.MODERATOR); // Admin duyệt Mod
+        
+        String result = userDAO.register(data.get("username"), data.get("password"), role, phone, email, isApproved);
         if ("SUCCESS".equals(result)) {
             sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, null));
         } else {
@@ -368,11 +381,19 @@ public class ClientHandler implements Runnable {
     }
 
     private void handlePlaceBid(Map<String, String> data) {
+        if (currentUser.getRole() == Role.MODERATOR) {
+            sendError("Moderator không được phép tham gia đấu giá.");
+            return;
+        }
         String roomId = data.get("roomId");
         java.math.BigDecimal amount = new java.math.BigDecimal(data.get("amount"));
-        // productSellerId: client có thể gửi 0 → server lấy từ room
         int productSellerId = 0;
         try { productSellerId = Integer.parseInt(data.getOrDefault("productSellerId", "0")); } catch (Exception ignored) {}
+        
+        if (currentUser.getId() == productSellerId) {
+            sendError("Người bán không được phép tham gia đấu giá sản phẩm của chính mình.");
+            return;
+        }
 
         AuctionRoom room = AuctionManager.getInstance().getRoom(roomId);
         if (room != null) {
@@ -446,7 +467,55 @@ public class ClientHandler implements Runnable {
     
     private void handleConfirmBuy(Map<String, String> data) {
         String status = data.get("status");
-        if ("REJECTED".equals(status)) {
+        if ("ACCEPTED".equals(status)) {
+            Integer sessionProductId = null;
+            try { sessionProductId = Integer.parseInt(data.get("sessionProductId")); }
+            catch (Exception ignored) {}
+            if (sessionProductId != null) {
+                try (java.sql.Connection conn = dao.DBConnection.getConnection();
+                     java.sql.PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE session_products SET transaction_status = 'PAID' WHERE id = ?")) {
+                    ps.setInt(1, sessionProductId);
+                    ps.executeUpdate();
+                    
+                    // Push live updates to Seller, Buyer, Mod
+                    String q = "SELECT su.username AS seller_name, wu.username AS buyer_name, mu.username AS mod_name " +
+                               "FROM session_products sp " +
+                               "JOIN products p ON sp.product_id = p.id " +
+                               "JOIN auction_sessions s ON sp.session_id = s.id " +
+                               "JOIN users su ON p.seller_id = su.id " +
+                               "JOIN users wu ON sp.winner_id = wu.id " +
+                               "JOIN users mu ON s.moderator_id = mu.id " +
+                               "WHERE sp.id = ?";
+                    try (java.sql.PreparedStatement ps2 = conn.prepareStatement(q)) {
+                        ps2.setInt(1, sessionProductId);
+                        try (java.sql.ResultSet rs = ps2.executeQuery()) {
+                            if (rs.next()) {
+                                String seller = rs.getString("seller_name");
+                                String buyer = rs.getString("buyer_name");
+                                String mod = rs.getString("mod_name");
+                                
+                                ClientHandler hSeller = SessionManager.getInstance().getHandlerByUsername(seller);
+                                if (hSeller != null) {
+                                    hSeller.handleGetSuccessfulTransactions();
+                                    hSeller.handleGetMyProducts(null);
+                                }
+                                ClientHandler hBuyer = SessionManager.getInstance().getHandlerByUsername(buyer);
+                                if (hBuyer != null) {
+                                    hBuyer.handleGetSuccessfulTransactions();
+                                }
+                                ClientHandler hMod = SessionManager.getInstance().getHandlerByUsername(mod);
+                                if (hMod != null) {
+                                    hMod.handleGetAllProducts(null);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        } else if ("REJECTED".equals(status)) {
             try (java.sql.Connection conn = dao.DBConnection.getConnection()) {
                 conn.setAutoCommit(false);
                 try {
@@ -485,6 +554,14 @@ public class ClientHandler implements Runnable {
                         ps.executeUpdate();
                     }
 
+                    if (sessionProductId != null) {
+                        try (java.sql.PreparedStatement ps = conn.prepareStatement(
+                                "UPDATE session_products SET transaction_status = 'PENDING' WHERE id = ?")) {
+                            ps.setInt(1, sessionProductId);
+                            ps.executeUpdate();
+                        }
+                    }
+
                     conn.commit();
                     sendError("Bạn đã từ chối mua và bị phạt " + penalty.toPlainString() + " VND (10% giá trúng).");
                     System.out.println("[Server] " + currentUser.getUsername()
@@ -500,7 +577,69 @@ public class ClientHandler implements Runnable {
             }
         }
     }
-    
+
+    private void handleMarkTransactionCompleted(Map<String, String> data) {
+        String sessionProductIdStr = data.get("sessionProductId");
+        if (sessionProductIdStr == null || sessionProductIdStr.isEmpty()) return;
+        
+        try {
+            int sessionProductId = Integer.parseInt(sessionProductIdStr);
+            try (java.sql.Connection conn = dao.DBConnection.getConnection();
+                 java.sql.PreparedStatement ps = conn.prepareStatement(
+                         "UPDATE session_products SET transaction_status = 'COMPLETED' WHERE id = ?")) {
+                ps.setInt(1, sessionProductId);
+                int rows = ps.executeUpdate();
+                if (rows > 0) {
+                    Map<String, String> res = new HashMap<>();
+                    res.put("message", "Giao dịch đã được đánh dấu hoàn tất!");
+                    sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, res));
+                    handleGetSuccessfulTransactions();
+                    
+                    // Push live updates
+                    String q = "SELECT su.username AS seller_name, wu.username AS buyer_name, mu.username AS mod_name " +
+                               "FROM session_products sp " +
+                               "JOIN products p ON sp.product_id = p.id " +
+                               "JOIN auction_sessions s ON sp.session_id = s.id " +
+                               "JOIN users su ON p.seller_id = su.id " +
+                               "JOIN users wu ON sp.winner_id = wu.id " +
+                               "JOIN users mu ON s.moderator_id = mu.id " +
+                               "WHERE sp.id = ?";
+                    try (java.sql.PreparedStatement ps2 = conn.prepareStatement(q)) {
+                        ps2.setInt(1, sessionProductId);
+                        try (java.sql.ResultSet rs = ps2.executeQuery()) {
+                            if (rs.next()) {
+                                String seller = rs.getString("seller_name");
+                                String buyer = rs.getString("buyer_name");
+                                String mod = rs.getString("mod_name");
+                                
+                                ClientHandler hSeller = SessionManager.getInstance().getHandlerByUsername(seller);
+                                if (hSeller != null && hSeller != this) {
+                                    hSeller.handleGetSuccessfulTransactions();
+                                    hSeller.handleGetMyProducts(null);
+                                }
+                                ClientHandler hBuyer = SessionManager.getInstance().getHandlerByUsername(buyer);
+                                if (hBuyer != null && hBuyer != this) {
+                                    hBuyer.handleGetSuccessfulTransactions();
+                                }
+                                ClientHandler hMod = SessionManager.getInstance().getHandlerByUsername(mod);
+                                if (hMod != null && hMod != this) {
+                                    hMod.handleGetAllProducts(null);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    sendError("Không tìm thấy giao dịch để cập nhật.");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendError("Lỗi khi cập nhật trạng thái giao dịch: " + e.getMessage());
+        }
+    }
+
+
+
     private void handleExportHistory() {
         try {
             javax.xml.parsers.DocumentBuilderFactory dbFactory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
@@ -556,16 +695,30 @@ public class ClientHandler implements Runnable {
     private void handleGetModList() {
         // Lấy danh sách Moderator thực tế từ database
         List<model.User> allUsers = userDAO.findAll();
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sbUser = new StringBuilder();
+        StringBuilder sbAdmin = new StringBuilder();
+        
         for (model.User u : allUsers) {
-            if (u.getRole() == model.Role.MODERATOR && !u.isBanned()) {
-                if (sb.length() > 0) sb.append(",");
-                boolean isOnline = SessionManager.getInstance().getHandlerByUsername(u.getUsername()) != null;
-                sb.append(u.getUsername()).append(isOnline ? ":1" : ":0");
+            if (u.getRole() == model.Role.MODERATOR) {
+                // Cho UserDashboard (danh sách nhắn tin)
+                if (!u.isBanned()) {
+                    if (sbUser.length() > 0) sbUser.append(",");
+                    boolean isOnline = SessionManager.getInstance().getHandlerByUsername(u.getUsername()) != null;
+                    sbUser.append(u.getUsername()).append(isOnline ? ":1" : ":0");
+                }
+                
+                // Cho AdminDashboard (bảng quản lý)
+                if (sbAdmin.length() > 0) sbAdmin.append("|");
+                sbAdmin.append(u.getId()).append(",")
+                       .append(u.getUsername()).append(",")
+                       .append(u.getEmail() != null ? u.getEmail() : "").append(",")
+                       .append(u.getPhone() != null ? u.getPhone() : "").append(",")
+                       .append(!u.isApproved() ? "CHỜ DUYỆT" : (u.isBanned() ? "ĐÃ KHÓA" : "ĐÃ DUYỆT"));
             }
         }
         Map<String, String> res = new HashMap<>();
-        res.put("modList", sb.toString());
+        res.put("modList", sbUser.toString());
+        res.put("mods", sbAdmin.toString());
         sendMessage(XmlMessageParser.serialize(MessageType.GET_MOD_LIST, res));
         
         // Gửi tin nhắn offline sau khi UI đã sẵn sàng hiển thị (dashboard đã load)
@@ -573,8 +726,51 @@ public class ClientHandler implements Runnable {
     }
 
     private void handleGetHistory() {
+        StringBuilder sb = new StringBuilder();
+        String sql = 
+            "SELECT p.name, sp.final_price, sp.status, sp.winner_id, p.seller_id, s.room_id " +
+            "FROM session_products sp " +
+            "JOIN products p ON sp.product_id = p.id " +
+            "JOIN auction_sessions s ON sp.session_id = s.id " +
+            "WHERE p.seller_id = ? OR sp.winner_id = ?";
+
+        try (java.sql.Connection conn = dao.DBConnection.getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, currentUser.getId());
+            ps.setInt(2, currentUser.getId());
+            
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String pName = rs.getString("name");
+                    java.math.BigDecimal price = rs.getBigDecimal("final_price");
+                    String status = rs.getString("status");
+                    int winnerId = rs.getInt("winner_id");
+                    int sellerId = rs.getInt("seller_id");
+                    String roomId = rs.getString("room_id");
+                    
+                    String displayStatus = "";
+                    if ("SOLD".equals(status)) {
+                        if (winnerId == currentUser.getId()) {
+                            displayStatus = "Thắng (" + price + " VND)";
+                        } else if (sellerId == currentUser.getId()) {
+                            displayStatus = "Đã bán (" + price + " VND)";
+                        }
+                    } else if ("PASSED".equals(status)) {
+                         displayStatus = "Thất bại";
+                    } else {
+                         continue;
+                    }
+                    
+                    sb.append("- ").append(roomId).append(" - ").append(pName).append(": ").append(displayStatus).append("\n");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         Map<String, String> res = new HashMap<>();
-        res.put("historyData", "- Đấu giá room1: Thất bại\n- Đấu giá roomVIP: Thắng (15.000.000 VND)\n");
+        res.put("historyData", sb.length() > 0 ? sb.toString() : "- Chưa có giao dịch nào\n");
         sendMessage(XmlMessageParser.serialize(MessageType.GET_HISTORY, res));
     }
 
@@ -585,20 +781,57 @@ public class ClientHandler implements Runnable {
         sendMessage(XmlMessageParser.serialize(MessageType.GET_ROOM_DETAIL, res));
     }
 
-    private void handleGetAdminStats() {
+    private void handleGetAdminStats(Map<String, String> data) {
         if (currentUser.getRole() != Role.ADMIN) return;
+        
+        String filter = data != null && data.containsKey("filter") ? data.get("filter") : "DAY";
+        
+        dao.AdminDAO adminDAO = new dao.AdminDAO();
         Map<String, String> res = new HashMap<>();
-        res.put("totalSessions", "125");
-        res.put("totalCommission", "18500000");
-        res.put("users", "1,admin,ADMIN,0,false|2,user1,USER,500000,false");
-        res.put("rooms", "room1,mod01,ACTIVE,2023-10-10,null|room2,mod02,ENDED,2023-10-09,2023-10-09");
+        res.put("totalSessions", String.valueOf(adminDAO.getTotalSessions()));
+        res.put("totalCommission", adminDAO.getTotalCommission().toString());
+        
+        // Lấy danh sách users
+        List<model.User> allUsers = userDAO.findAll();
+        StringBuilder sbUsers = new StringBuilder();
+        for (model.User u : allUsers) {
+            if (sbUsers.length() > 0) sbUsers.append("|");
+            sbUsers.append(u.getId()).append(",")
+                   .append(u.getUsername()).append(",")
+                   .append(u.getRole().name()).append(",")
+                   .append(u.getBalance().intValue()).append(",")
+                   .append(u.isBanned() ? "BANNED" : "ACTIVE");
+        }
+        res.put("users", sbUsers.toString());
+        
+        // Lấy danh sách phòng
+        dao.AuctionSessionDAO sessionDAO = new dao.AuctionSessionDAO();
+        List<model.AuctionSession> allRooms = sessionDAO.findAll();
+        StringBuilder sbRooms = new StringBuilder();
+        for (model.AuctionSession s : allRooms) {
+            if (sbRooms.length() > 0) sbRooms.append("|");
+            
+            String modName = "N/A";
+            model.User mod = userDAO.findById(s.getModeratorId());
+            if (mod != null) modName = mod.getUsername();
+            
+            sbRooms.append(s.getRoomId()).append(",")
+                   .append(modName).append(",")
+                   .append(s.getStatus()).append(",")
+                   .append(s.getStartTime() != null ? s.getStartTime().toString().substring(0, 10) : "N/A").append(",")
+                   .append(s.getEndTime() != null ? s.getEndTime().toString().substring(0, 10) : "N/A");
+        }
+        res.put("rooms", sbRooms.toString());
+        
+        res.put("revenueData", adminDAO.getRevenueData(filter));
         sendMessage(XmlMessageParser.serialize(MessageType.GET_ADMIN_STATS, res));
     }
 
     private void handleGetPenaltyList() {
         if (currentUser.getRole() != Role.ADMIN) return;
+        dao.AdminDAO adminDAO = new dao.AdminDAO();
         Map<String, String> res = new HashMap<>();
-        res.put("penalties", "1,user1,Từ chối mua SP 1,500000,2023-10-10|2,user2,Từ chối mua SP 3,200000,2023-10-09");
+        res.put("penalties", adminDAO.getAllPenaltiesWithUsername());
         sendMessage(XmlMessageParser.serialize(MessageType.GET_PENALTY_LIST, res));
     }
     
@@ -736,7 +969,35 @@ public class ClientHandler implements Runnable {
         Map<String, String> res = new HashMap<>();
         res.put("pending",  buildProductListString(productDAO.findByStatus("PENDING")));
         res.put("approved", buildProductListString(productDAO.findByStatus("APPROVED")));
+        res.put("auctioning", buildProductListString(productDAO.findByStatus("AUCTIONING")));
         res.put("rejected", buildProductListString(productDAO.findByStatus("REJECTED")));
+        
+        java.util.List<model.Product> soldProducts = new java.util.ArrayList<>();
+        try (java.sql.Connection conn = dao.DBConnection.getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(
+                "SELECT p.* FROM products p " +
+                "JOIN session_products sp ON sp.product_id = p.id " +
+                "JOIN auction_sessions s ON sp.session_id = s.id " +
+                "WHERE p.status IN ('SOLD', 'COMPLETED') AND s.moderator_id = ?")) {
+            ps.setInt(1, currentUser.getId());
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    model.Product p = new model.Product();
+                    p.setId(rs.getInt("id"));
+                    p.setSellerId(rs.getInt("seller_id"));
+                    p.setName(rs.getString("name"));
+                    p.setDescription(rs.getString("description"));
+                    p.setImageData(rs.getString("image_data"));
+                    p.setStartingPrice(rs.getBigDecimal("starting_price"));
+                    p.setStatus(rs.getString("status"));
+                    soldProducts.add(p);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        res.put("sold", buildProductListString(soldProducts));
+        
         sendMessage(XmlMessageParser.serialize(MessageType.GET_ALL_PRODUCTS, res));
     }
 
@@ -761,19 +1022,33 @@ public class ClientHandler implements Runnable {
     
     private void handleGetApprovedProductsInRoom(Map<String, String> data) {
         String roomId = data.get("roomId");
-        AuctionRoom room = AuctionManager.getInstance().getRoom(roomId);
-        
-        if (room == null) {
-            sendError("Phòng không tồn tại!");
-            return;
-        }
+        if (roomId == null) return;
         
         dao.ProductDAO productDAO = new dao.ProductDAO();
         List<model.Product> approvedProducts = productDAO.findByStatus("APPROVED");
         
+        AuctionRoom room = AuctionManager.getInstance().getRoom(roomId);
+        java.util.Set<Integer> existingIds = new java.util.HashSet<>();
+        if (room != null) {
+            for (model.SessionProduct sp : room.getProducts()) {
+                existingIds.add(sp.getProductId());
+            }
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        for (model.Product p : approvedProducts) {
+            if (existingIds.contains(p.getId())) continue;
+            if (sb.length() > 0) sb.append("|");
+            
+            sb.append(p.getId()).append(",")
+              .append(p.getName().replace(",", ";")).append(",")
+              .append(p.getStartingPrice()).append(",")
+              .append(p.getSellerId());
+        }
+        
         Map<String, String> res = new HashMap<>();
         res.put("roomId", roomId);
-        res.put("products", buildProductListString(approvedProducts));
+        res.put("productList", sb.toString());
         sendMessage(XmlMessageParser.serialize(MessageType.GET_APPROVED_PRODUCTS_IN_ROOM, res));
     }
     
@@ -824,14 +1099,36 @@ public class ClientHandler implements Runnable {
                     }
                     sp.setCurrentHighestBid(startPrice);
                     sp.setStatus("WAITING");
-                    room.addProduct(sp);
-                    addedCount++;
                     
-                    System.out.println("[Server] Đã thêm sản phẩm " + product.getName() + " vào phòng " + roomId + " với giá " + startPrice);
+                    // Lấy session_id từ DB
+                    int sessionId = 0;
+                    try (java.sql.Connection conn = dao.DBConnection.getConnection();
+                         java.sql.PreparedStatement ps = conn.prepareStatement("SELECT id FROM auction_sessions WHERE room_id = ?")) {
+                        ps.setString(1, roomId);
+                        try (java.sql.ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) {
+                                sessionId = rs.getInt("id");
+                            }
+                        }
+                    } catch (Exception e) { e.printStackTrace(); }
+                    
+                    if (sessionId > 0) {
+                        sp.setSessionId(sessionId);
+                        dao.AuctionSessionDAO sessionDAO = new dao.AuctionSessionDAO();
+                        if (sessionDAO.addProduct(sp)) {
+                            room.addProduct(sp);
+                            addedCount++;
+                            System.out.println("[Server] Đã thêm sản phẩm " + product.getName() + " vào phòng " + roomId + " với giá " + startPrice);
+                        }
+                    }
                 }
             } catch (Exception e) {
                 System.err.println("[Server] Lỗi thêm sản phẩm: " + e.getMessage());
             }
+        }
+        
+        if (addedCount > 0) {
+            room.broadcastProductListUpdate();
         }
         
         Map<String, String> res = new HashMap<>();
@@ -909,6 +1206,177 @@ public class ClientHandler implements Runnable {
         if (writer != null) {
             writer.print(xml);
             writer.flush();
+        }
+    }
+    
+    private void handleRateUser(Map<String, String> data) {
+        int targetId = 0;
+        try { targetId = Integer.parseInt(data.get("ratedId")); } catch(Exception ignored) {}
+        
+        if (targetId == 0) {
+            String ratedUsername = data.get("ratedUsername");
+            if (ratedUsername != null && !ratedUsername.isEmpty()) {
+                model.User u = userDAO.findByUsername(ratedUsername);
+                if (u != null) targetId = u.getId();
+            }
+        }
+        
+        if (targetId == 0) {
+            sendError("Không tìm thấy người dùng để đánh giá.");
+            return;
+        }
+
+        int stars = 5;
+        try { stars = Integer.parseInt(data.get("score")); } catch(Exception ignored) {}
+        
+        String comment = data.getOrDefault("comment", "");
+        Integer sessionId = null;
+        try { 
+            int sid = Integer.parseInt(data.get("sessionId"));
+            if (sid > 0) sessionId = sid;
+        } catch(Exception ignored) {}
+
+        dao.RatingDAO ratingDAO = new dao.RatingDAO();
+        model.Rating rating = new model.Rating();
+        rating.setRaterId(currentUser.getId());
+        rating.setRatedId(targetId);
+        rating.setScore(stars);
+        rating.setComment(comment);
+        rating.setSessionId(sessionId);
+
+        if (ratingDAO.addRating(rating)) {
+            Map<String, String> res = new HashMap<>();
+            res.put("message", "Đánh giá đã được gửi thành công!");
+            sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, res));
+        } else {
+            sendError("Lỗi khi lưu đánh giá.");
+        }
+    }
+
+    private void handleGetRatings(Map<String, String> data) {
+        int targetId = 0;
+        if (data != null && data.containsKey("targetId") && !data.get("targetId").isEmpty()) {
+            try { targetId = Integer.parseInt(data.get("targetId")); } catch(Exception e) {}
+        }
+        
+        if (targetId == 0 && data != null) {
+            String ratedUsername = data.get("ratedUsername");
+            if (ratedUsername != null && !ratedUsername.isEmpty()) {
+                model.User u = userDAO.findByUsername(ratedUsername);
+                if (u != null) targetId = u.getId();
+                else {
+                    sendError("Không tìm thấy Moderator: " + ratedUsername);
+                    return;
+                }
+            }
+        }
+        
+        // Mặc định lấy của chính mình nếu không truyền targetId và ratedUsername
+        if (targetId == 0) targetId = currentUser.getId();
+
+        dao.RatingDAO ratingDAO = new dao.RatingDAO();
+        List<model.Rating> ratings = ratingDAO.findByRatedId(targetId);
+
+        StringBuilder sb = new StringBuilder();
+        for (model.Rating r : ratings) {
+            model.User fromUser = userDAO.findById(r.getRaterId());
+            String fromName = fromUser != null ? fromUser.getUsername() : "Unknown";
+            if (sb.length() > 0) sb.append("|");
+            sb.append(fromName).append(",")
+              .append(r.getScore()).append(",")
+              .append(r.getComment().replace(",", ";").replace("|", "/"));
+        }
+
+        Map<String, String> res = new HashMap<>();
+        res.put("targetId", String.valueOf(targetId));
+        res.put("ratings", sb.toString());
+        sendMessage(XmlMessageParser.serialize(MessageType.GET_RATINGS, res));
+    }
+
+    private void handleGetSuccessfulTransactions() {
+        StringBuilder sb = new StringBuilder();
+        // Format: role(0),productId(1),productName(2),partnerId(3),partnerName(4),
+        //         partnerPhone(5),partnerEmail(6),finalPrice(7),txStatus(8),sessionProductId(9)
+        String sql = 
+            "SELECT sp.id AS sp_id, p.id AS product_id, p.name AS product_name, " +
+            "       sp.final_price, sp.transaction_status, " +
+            "       p.seller_id, seller.username AS seller_name, seller.phone AS seller_phone, seller.email AS seller_email, " +
+            "       sp.winner_id, winner.username AS winner_name, winner.phone AS winner_phone, winner.email AS winner_email " +
+            "FROM session_products sp " +
+            "JOIN products p ON sp.product_id = p.id " +
+            "JOIN users seller ON p.seller_id = seller.id " +
+            "JOIN users winner ON sp.winner_id = winner.id " +
+            "WHERE sp.status = 'SOLD' AND (p.seller_id = ? OR sp.winner_id = ?)";
+
+        try (java.sql.Connection conn = dao.DBConnection.getConnection();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, currentUser.getId());
+            ps.setInt(2, currentUser.getId());
+            
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int sellerId = rs.getInt("seller_id");
+                    String role = (sellerId == currentUser.getId()) ? "SELLER" : "BUYER";
+                    
+                    int partnerId;
+                    String partnerName, partnerPhone, partnerEmail;
+                    
+                    if ("SELLER".equals(role)) {
+                        partnerId = rs.getInt("winner_id");
+                        partnerName = rs.getString("winner_name");
+                        partnerPhone = rs.getString("winner_phone");
+                        partnerEmail = rs.getString("winner_email");
+                    } else {
+                        partnerId = rs.getInt("seller_id");
+                        partnerName = rs.getString("seller_name");
+                        partnerPhone = rs.getString("seller_phone");
+                        partnerEmail = rs.getString("seller_email");
+                    }
+                    
+                    if (partnerPhone == null) partnerPhone = "Chưa có";
+                    if (partnerEmail == null) partnerEmail = "Chưa có";
+                    
+                    sb.append(role).append(",")
+                      .append(rs.getInt("product_id")).append(",")
+                      .append(rs.getString("product_name").replace(",", ";")).append(",")
+                      .append(partnerId).append(",")
+                      .append(partnerName.replace(",", ";")).append(",")
+                      .append(partnerPhone.replace(",", ";")).append(",")
+                      .append(partnerEmail.replace(",", ";")).append(",")
+                      .append(rs.getBigDecimal("final_price")).append(",")
+                      .append(rs.getString("transaction_status")).append(",")
+                      .append(rs.getInt("sp_id"))   // index 9 = sessionProductId
+                      .append("|");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendError("Lỗi khi lấy dữ liệu giao dịch.");
+            return;
+        }
+        
+        Map<String, String> res = new HashMap<>();
+        res.put("transactions", sb.toString());
+        sendMessage(XmlMessageParser.serialize(MessageType.GET_SUCCESSFUL_TRANSACTIONS, res));
+    }
+
+    private void handleApproveMod(Map<String, String> data) {
+        if (currentUser.getRole() != Role.ADMIN) {
+            sendError("Bạn không có quyền thực hiện việc này!");
+            return;
+        }
+        try {
+            int userId = Integer.parseInt(data.get("userId"));
+            boolean ok = userDAO.approveUser(userId);
+            if (ok) {
+                sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, null));
+                handleGetModList();
+            } else {
+                sendError("Không thể duyệt tài khoản này!");
+            }
+        } catch (Exception e) {
+            sendError("Dữ liệu không hợp lệ!");
         }
     }
 }

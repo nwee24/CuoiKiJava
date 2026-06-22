@@ -6,6 +6,9 @@ import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.*;
+import net.miginfocom.swing.MigLayout;
+import org.kordamp.ikonli.feather.Feather;
+import org.kordamp.ikonli.swing.FontIcon;
 import java.util.List;
 
 /**
@@ -120,8 +123,7 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
         };
         iconBox.setOpaque(false);
         iconBox.setPreferredSize(new Dimension(40, 40));
-        JLabel iconLbl = new JLabel("🏛");
-        iconLbl.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
+        JLabel iconLbl = new JLabel(FontIcon.of(Feather.HOME, 20, ORANGE));
         iconBox.add(iconLbl);
         left.add(iconBox);
 
@@ -152,30 +154,22 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
     private JPanel buildLeftPanel() {
         JPanel card = buildCard("Thong Tin Phong");
 
-        JPanel form = new JPanel(new GridBagLayout());
+        JPanel form = new JPanel(new net.miginfocom.swing.MigLayout("wrap 1, insets 24, gap 16, fillx"));
         form.setOpaque(false);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill  = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(0, 0, 12, 0);
-        gbc.weightx = 1.0;
-        gbc.gridx = 0;
 
         // Mã phòng
-        gbc.gridy = 0; form.add(fieldLabel("Ma Phong *"), gbc);
-        gbc.gridy = 1;
+        form.add(fieldLabel("Ma Phong *"));
         txtRoomId = makeInput("Vi du: ROOM_001");
         txtRoomId.setText("ROOM_" + String.format("%04d", new Random().nextInt(9999) + 1));
-        form.add(txtRoomId, gbc);
+        form.add(txtRoomId, "growx, h 40!");
 
         // Tiêu đề
-        gbc.gridy = 2; form.add(fieldLabel("Tieu De Phong *"), gbc);
-        gbc.gridy = 3;
+        form.add(fieldLabel("Tieu De Phong *"));
         txtRoomTitle = makeInput("Vi du: Phien Dau Gia Do Co Thang 6");
-        form.add(txtRoomTitle, gbc);
+        form.add(txtRoomTitle, "growx, h 40!");
 
         // Mô tả
-        gbc.gridy = 4; form.add(fieldLabel("Mo Ta"), gbc);
-        gbc.gridy = 5; gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH;
+        form.add(fieldLabel("Mo Ta"));
         txtDescription = new JTextArea(4, 1);
         txtDescription.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         txtDescription.setForeground(TEXT_DARK);
@@ -190,12 +184,10 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
         descScroll.setBorder(null);
         descScroll.setBackground(BG_INPUT);
         descScroll.getViewport().setBackground(BG_INPUT);
-        form.add(descScroll, gbc);
+        form.add(descScroll, "growx, pushy, growy");
 
         // Info box
-        gbc.gridy = 6; gbc.weighty = 0; gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(10, 0, 0, 0);
-        form.add(buildInfoBox(), gbc);
+        form.add(buildInfoBox(), "growx");
 
         card.add(form, BorderLayout.CENTER);
         return card;
@@ -248,7 +240,7 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
         });
         searchBar.add(txtSearchUser, BorderLayout.CENTER);
 
-        JButton btnRefresh = buildIconBtn("⟳");
+        JButton btnRefresh = buildIconBtn(FontIcon.of(Feather.REFRESH_CW, 16, TEXT_MED));
         btnRefresh.setToolTipText("Làm mới danh sách");
         btnRefresh.addActionListener(e -> NetworkClient.getInstance().sendMessage(MessageType.GET_USER_LIST, null));
         searchBar.add(btnRefresh, BorderLayout.EAST);
@@ -364,11 +356,12 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
         tag.setBorder(BorderFactory.createCompoundBorder(
             new LineBorder(ORANGE_RING, 1, true), new EmptyBorder(1, 6, 1, 4)));
 
-        JLabel lbl = new JLabel("👤 " + name);
+        JLabel lbl = new JLabel(FontIcon.of(Feather.USER, 14, ORANGE_DARK));
+        lbl.setText(name);
         lbl.setFont(new Font("Segoe UI", Font.PLAIN, 12));
         lbl.setForeground(ORANGE_DARK);
 
-        JButton btnX = new JButton("✕");
+        JButton btnX = new JButton(FontIcon.of(Feather.X, 12, new Color(180, 80, 0)));
         btnX.setFont(new Font("Segoe UI", Font.BOLD, 10));
         btnX.setForeground(new Color(180, 80, 0));
         btnX.setBackground(ORANGE_SOFT);
@@ -571,8 +564,8 @@ public class CreateRoomDialog extends JDialog implements NetworkClient.MessageLi
         return btn;
     }
 
-    private JButton buildIconBtn(String text) {
-        JButton btn = new JButton(text);
+    private JButton buildIconBtn(Icon icon) {
+        JButton btn = new JButton(icon);
         btn.setFont(new Font("Segoe UI", Font.PLAIN, 15)); btn.setForeground(TEXT_MED);
         btn.setBackground(BG_CARD); btn.setFocusPainted(false);
         btn.setPreferredSize(new Dimension(38, 38));

@@ -12,6 +12,7 @@ import java.io.File;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import net.miginfocom.swing.MigLayout;
 
 /**
  * ProductSubmitForm - Form gửi yêu cầu sản phẩm mới
@@ -32,48 +33,41 @@ public class ProductSubmitForm extends JPanel {
     }
 
     private void buildUI() {
-        JPanel form = new JPanel(new GridBagLayout());
+        JPanel form = new JPanel(new MigLayout("wrap 1, insets 16, gap 8, fillx", "[grow]"));
         form.setBackground(UITheme.BG_CARD);
-        form.setBorder(new EmptyBorder(12, 14, 8, 14));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 10, 0);
-        gbc.gridx = 0;
 
-        gbc.gridy = 0; form.add(label("Tên sản phẩm *"), gbc);
-        gbc.gridy = 1; txtName = textField("Ví dụ: Bình gốm cổ Thế kỷ XVIII"); form.add(txtName, gbc);
+        form.add(label("Tên sản phẩm *"), "growx");
+        txtName = UITheme.customTextField("Ví dụ: Bình gốm cổ Thế kỷ XVIII", UITheme.BG_DARK, UITheme.BORDER);
+        form.add(txtName, "growx, h 40!");
 
-        gbc.gridy = 2; form.add(label("Mô tả chi tiết"), gbc);
-        gbc.gridy = 3;
+        form.add(label("Mô tả chi tiết"), "growx");
+        
         txtDesc = new JTextArea(3, 1);
-        txtDesc.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        txtDesc.setFont(UITheme.fontBody(13));
         txtDesc.setForeground(UITheme.TEXT_PRIMARY);
         txtDesc.setBackground(UITheme.BG_DARK);
         txtDesc.setCaretColor(UITheme.ACCENT);
         txtDesc.setLineWrap(true);
         txtDesc.setWrapStyleWord(true);
-        txtDesc.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(UITheme.BORDER, 1, true), new EmptyBorder(8, 10, 8, 10)));
-        JScrollPane descScroll = new JScrollPane(txtDesc);
-        descScroll.setBorder(null);
-        form.add(descScroll, gbc);
+        txtDesc.setBorder(new EmptyBorder(8, 12, 8, 12));
+        JScrollPane descScroll = UITheme.styledScrollPane(txtDesc);
+        form.add(descScroll, "growx, h 80!");
 
-        gbc.gridy = 4; form.add(label("Giá khởi điểm (VND) *"), gbc);
-        gbc.gridy = 5; txtPrice = textField("Ví dụ: 5000000"); form.add(txtPrice, gbc);
+        form.add(label("Giá khởi điểm (VND) *"), "growx");
+        txtPrice = UITheme.customTextField("Ví dụ: 5000000", UITheme.BG_DARK, UITheme.BORDER);
+        form.add(txtPrice, "growx, h 40!");
 
-        gbc.gridy = 6; form.add(label("Hình ảnh sản phẩm *"), gbc);
-        gbc.gridy = 7; form.add(buildImageRow(), gbc);
+        form.add(label("Hình ảnh sản phẩm *"), "growx");
+        form.add(buildImageRow(), "growx");
 
-        add(form, BorderLayout.CENTER);
+        add(UITheme.styledScrollPane(form), BorderLayout.CENTER);
 
         // Footer
-        JPanel footer = new JPanel(new BorderLayout());
+        JPanel footer = new JPanel(new MigLayout("insets 16", "push[]"));
         footer.setBackground(UITheme.BG_CARD);
-        footer.setBorder(BorderFactory.createCompoundBorder(
-            new MatteBorder(1, 0, 0, 0, UITheme.BORDER), new EmptyBorder(10, 14, 12, 14)));
-        btnSubmit = createButton("Gửi yêu cầu đến Moderator");
-        footer.add(btnSubmit, BorderLayout.CENTER);
+        footer.setBorder(new MatteBorder(1, 0, 0, 0, UITheme.BORDER));
+        btnSubmit = UITheme.primaryBtn("Gửi yêu cầu đến Moderator");
+        footer.add(btnSubmit, "growx");
         add(footer, BorderLayout.SOUTH);
 
         btnSelectImage.addActionListener(e -> selectImage());
@@ -82,73 +76,31 @@ public class ProductSubmitForm extends JPanel {
 
     private JLabel label(String text) {
         JLabel l = new JLabel(text);
-        l.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        l.setFont(UITheme.fontBold(12));
         l.setForeground(UITheme.TEXT_MUTED);
         return l;
     }
 
-    private JTextField textField(String placeholder) {
-        JTextField tf = new JTextField();
-        tf.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        tf.setForeground(UITheme.TEXT_PRIMARY);
-        tf.setBackground(UITheme.BG_DARK);
-        tf.setCaretColor(UITheme.ACCENT);
-        tf.putClientProperty("JTextField.placeholderText", placeholder);
-        tf.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(UITheme.BORDER, 1, true), new EmptyBorder(8, 12, 8, 12)));
-        return tf;
-    }
-
     private JPanel buildImageRow() {
-        JPanel imageCard = new JPanel(new BorderLayout(12, 0));
+        JPanel imageCard = new JPanel(new MigLayout("insets 8, gap 12", "[][grow]", "[]"));
         imageCard.setBackground(UITheme.BG_DARK);
         imageCard.setBorder(new LineBorder(UITheme.BORDER, 1, true));
-        imageCard.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        imageCard.putClientProperty("FlatLaf.style", "arc: 10");
 
         lblImagePreview = new JLabel("Chưa chọn ảnh", SwingConstants.CENTER);
-        lblImagePreview.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        lblImagePreview.setFont(UITheme.fontBody(11));
         lblImagePreview.setForeground(UITheme.TEXT_HINT);
-        lblImagePreview.setBackground(UITheme.BG_DARK);
-        lblImagePreview.setOpaque(true);
         lblImagePreview.setPreferredSize(new Dimension(84, 84));
-        imageCard.add(lblImagePreview, BorderLayout.WEST);
+        imageCard.add(lblImagePreview, "cell 0 0");
 
-        btnSelectImage = new JButton("Chọn ảnh...");
-        btnSelectImage.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        btnSelectImage.setForeground(UITheme.ACCENT);
-        btnSelectImage.setBackground(new Color(255, 247, 237));
-        btnSelectImage.setFocusPainted(false);
-        btnSelectImage.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btnSelectImage.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(UITheme.BORDER_LIGHT, 1, true), new EmptyBorder(5, 10, 5, 10)));
-        imageCard.add(btnSelectImage, BorderLayout.CENTER);
+        btnSelectImage = UITheme.ghostBtn("Chọn ảnh...", UITheme.ACCENT);
+        imageCard.add(btnSelectImage, "cell 1 0, left");
 
         imageCard.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override public void mouseClicked(java.awt.event.MouseEvent e) { selectImage(); }
         });
 
         return imageCard;
-    }
-
-    private JButton createButton(String text) {
-        JButton btn = new JButton(text) {
-            @Override protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(getModel().isRollover() ? UITheme.ACCENT_DARK : UITheme.ACCENT);
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
-                super.paintComponent(g);
-                g2.dispose();
-            }
-        };
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        btn.setForeground(Color.WHITE);
-        btn.setContentAreaFilled(false);
-        btn.setBorderPainted(false);
-        btn.setFocusPainted(false);
-        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        btn.setBorder(new EmptyBorder(12, 20, 12, 20));
-        return btn;
     }
 
     public void setTargetMod(String modUsername) {
