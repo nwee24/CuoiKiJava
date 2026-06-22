@@ -73,6 +73,8 @@ public class AuctionRoom {
 
     public synchronized void startAuction() {
         System.out.println("[Phòng " + roomId + "] Bắt đầu phiên đấu giá.");
+        auctionSessionDAO.startSession(roomId);
+        SessionManager.getInstance().notifyAdminRoomChanged();
         nextProduct();
     }
 
@@ -213,6 +215,8 @@ public class AuctionRoom {
 
     private void doCloseRoom() {
         if (timerService != null) timerService.shutdownNow();
+        auctionSessionDAO.endSession(roomId, "ENDED");
+        SessionManager.getInstance().notifyAdminRoomChanged();
 
         // Tính toán hoa hồng cho Moderator
         try (java.sql.Connection conn = dao.DBConnection.getConnection()) {

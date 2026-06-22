@@ -5,6 +5,8 @@ import javax.swing.*;
 import javax.swing.border.*;
 import javax.swing.table.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.HashMap;
 import java.util.Map;
 import net.miginfocom.swing.MigLayout;
@@ -186,23 +188,70 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
         JPanel panel = UITheme.createCardPanel("wrap 1, insets 24, gap 16, fill");
         panel.add(buildPageHeader("Quản Lý Moderator", "Danh sách quản trị viên trung gian"), "growx");
         
-        JPanel top = new JPanel(new MigLayout("insets 0", "[grow][][]"));
+        JPanel top = new JPanel(new MigLayout("insets 0", "[grow][]"));
         top.setOpaque(false);
         top.add(new JLabel("Danh sách:"), "growx");
 
-        JButton btnApproveMod = UITheme.customBtn("✅ Duyệt Moderator", UITheme.SUCCESS, UITheme.SUCCESS.darker(), Color.WHITE, 10);
-        btnApproveMod.addActionListener(e -> approveSelectedMod());
-        top.add(btnApproveMod);
-
         JButton btnAddMod = UITheme.primaryBtn("Thêm Moderator");
-        btnAddMod.addActionListener(e -> JOptionPane.showMessageDialog(this, "Tính năng thêm Moderator sẽ sớm ra mắt!"));
+        btnAddMod.addActionListener(e -> {
+            new ModFormDialog(mainFrame, false, null, null, null, null).setVisible(true);
+        });
         top.add(btnAddMod);
         panel.add(top, "growx");
 
-        modModel = new DefaultTableModel(new Object[]{"ID", "Tên Đăng Nhập", "Email", "SĐT", "Trạng Thái"}, 0) {
+        modModel = new DefaultTableModel(
+            new Object[]{"ID", "Tên Đăng Nhập", "Email", "SĐT", "Trạng Thái", "Thao Tác"}, 0) {
             public boolean isCellEditable(int r, int c) { return false; }
         };
         tblMods = buildTable(modModel);
+
+        // Cột Trạng Thái (col 4) – StatusBadgeCellRenderer
+        tblMods.getColumnModel().getColumn(4).setCellRenderer(new StatusBadgeCellRenderer());
+        tblMods.getColumnModel().getColumn(4).setPreferredWidth(110);
+        tblMods.getColumnModel().getColumn(4).setMaxWidth(140);
+
+        // Cột Thao Tác (col 5) – ActionButtonsCellRenderer
+        tblMods.getColumnModel().getColumn(5).setCellRenderer(new ActionButtonsCellRenderer());
+        tblMods.getColumnModel().getColumn(5).setPreferredWidth(220);
+        tblMods.getColumnModel().getColumn(5).setMinWidth(200);
+
+        tblMods.setRowHeight(44);
+
+        // MouseListener: detect click vào cột 5 – Thao Tác
+        tblMods.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int row = tblMods.rowAtPoint(e.getPoint());
+                int col = tblMods.columnAtPoint(e.getPoint());
+                if (row < 0 || col != 5) return;
+
+                Rectangle rect = tblMods.getCellRect(row, col, false);
+                int mouseX = e.getX() - rect.x;
+
+                ActionButtonsCellRenderer renderer = (ActionButtonsCellRenderer) tblMods.getCellRenderer(row, col);
+                ActionButtonsPanel actionPanel = renderer.panel;
+                String status = tblMods.getValueAt(row, 4).toString();
+                actionPanel.refresh(status);
+                actionPanel.setBounds(0, 0, rect.width, rect.height);
+                actionPanel.doLayout();
+
+                Component hit = actionPanel.getComponentAt(mouseX, e.getY() - rect.y);
+                String id = tblMods.getValueAt(row, 0).toString();
+
+                if (hit == actionPanel.btnApprove && actionPanel.btnApprove.isVisible()) {
+                    approveMod(id);
+                } else if (hit == actionPanel.btnEdit) {
+                    editMod(id,
+                        tblMods.getValueAt(row, 1).toString(),
+                        tblMods.getValueAt(row, 2).toString(),
+                        tblMods.getValueAt(row, 3).toString());
+                } else if (hit == actionPanel.btnToggle) {
+                    boolean isBanned = "ĐÃ KHÓA".equals(status);
+                    toggleBanMod(id, isBanned);
+                }
+            }
+        });
+
         panel.add(UITheme.styledScrollPane(tblMods), "grow, push");
         return panel;
     }
@@ -227,6 +276,10 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
             public boolean isCellEditable(int r, int c) { return false; }
         };
         tblRooms = buildTable(roomModel);
+        
+        tblRooms.getColumnModel().getColumn(3).setPreferredWidth(160);
+        tblRooms.getColumnModel().getColumn(4).setPreferredWidth(160);
+        
         panel.add(UITheme.styledScrollPane(tblRooms), "grow, push");
         return panel;
     }
@@ -259,27 +312,21 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
         NetworkClient.getInstance().sendMessage(MessageType.GET_PENALTY_LIST, null);
     }
 
-    private void approveSelectedMod() {
-        int row = tblMods.getSelectedRow();
-        if (row < 0) {
-            JOptionPane.showMessageDialog(this, "Vui lòng chọn một Moderator để duyệt!", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        String idStr = tblMods.getValueAt(row, 0).toString();
-        String status = tblMods.getValueAt(row, 4).toString();
-        if ("ĐÃ DUYỆT".equals(status)) {
-            JOptionPane.showMessageDialog(this, "Tài khoản này đã được duyệt từ trước!", "Thông báo", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-        if ("ĐÃ KHÓA".equals(status)) {
-            JOptionPane.showMessageDialog(this, "Tài khoản này đang bị khóa!", "Thông báo", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
+    private void approveMod(String userId) {
         Map<String, String> data = new HashMap<>();
-        data.put("userId", idStr);
+        data.put("userId", userId);
         NetworkClient.getInstance().sendMessage(MessageType.APPROVE_MOD, data);
-        JOptionPane.showMessageDialog(this, "Đã duyệt!", "Thành công", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void toggleBanMod(String userId, boolean currentBanStatus) {
+        Map<String, String> data = new HashMap<>();
+        data.put("userId", userId);
+        data.put("isBanned", String.valueOf(!currentBanStatus));
+        NetworkClient.getInstance().sendMessage(MessageType.TOGGLE_BAN_USER, data);
+    }
+
+    private void editMod(String idStr, String username, String email, String phone) {
+        new ModFormDialog(mainFrame, true, idStr, username, email, phone).setVisible(true);
     }
     
     private void fetchFilteredData() {
@@ -318,19 +365,34 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
                     for (String row : r.split("\\|")) roomModel.addRow(row.split(",", -1));
                 }
             } else if (type == MessageType.GET_MOD_LIST) {
-                modModel.setRowCount(0);
-                String m = data.get("mods");
-                if (m != null && !m.isEmpty()) {
-                    for (String row : m.split("\\|")) modModel.addRow(row.split(",", -1));
-                }
+                handleModListData(data.get("mods"));
             } else if (type == MessageType.GET_PENALTY_LIST) {
                 penaltyModel.setRowCount(0);
                 String p = data.get("penalties");
                 if (p != null && !p.isEmpty()) {
                     for (String row : p.split("\\|")) penaltyModel.addRow(row.split(",", -1));
                 }
+            } else if (type == MessageType.ROOM_STATUS_UPDATE) {
+                // Nhận tín hiệu server báo trạng thái phòng thay đổi → tải lại dữ liệu tự động
+                if ("ROOM_STATUS_CHANGED".equals(data.get("trigger"))) {
+                    fetchFilteredData();
+                }
             }
         });
+    }
+
+    private void handleModListData(String mods) {
+        modModel.setRowCount(0);
+        if (mods == null || mods.isEmpty()) return;
+        for (String row : mods.split("\\|")) {
+            String[] parts = row.split(",", -1);
+            // parts: id, username, email, phone, status
+            // We add a 6th dummy column for the action buttons renderer
+            String[] rowData = new String[6];
+            for (int i = 0; i < 5 && i < parts.length; i++) rowData[i] = parts[i];
+            rowData[5] = parts.length > 4 ? parts[4] : ""; // duplicate status into actions col
+            modModel.addRow(rowData);
+        }
     }
 
     private String formatMoney(String raw) {
@@ -456,6 +518,165 @@ public class AdminDashboard extends JPanel implements NetworkClient.MessageListe
 
             super.paintComponent(g);
             g2.dispose();
+        }
+    }
+
+    // ====================================================================
+    //  STATUS BADGE CELL RENDERER (col 4)
+    // ====================================================================
+    class StatusBadgeCellRenderer extends javax.swing.table.DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            String status = value != null ? value.toString() : "";
+            JLabel lbl = new JLabel(status, SwingConstants.CENTER);
+            lbl.setFont(UITheme.fontBold(12));
+            lbl.setOpaque(true);
+
+            Color bg, fg;
+            if ("CHỜ DUYỆT".equals(status)) {
+                bg = new Color(245, 158, 11, 30);
+                fg = UITheme.AMBER;
+            } else if ("ĐÃ DUYỆT".equals(status)) {
+                bg = new Color(16, 185, 129, 30);
+                fg = UITheme.SUCCESS;
+            } else {
+                bg = new Color(239, 68, 68, 30);
+                fg = UITheme.DANGER;
+            }
+
+            if (isSelected) {
+                lbl.setBackground(table.getSelectionBackground());
+                lbl.setForeground(table.getSelectionForeground());
+            } else {
+                lbl.setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
+                lbl.setForeground(fg);
+
+                // Pill badge effect
+                lbl = new JLabel(status, SwingConstants.CENTER) {
+                    @Override protected void paintComponent(Graphics g) {
+                        Graphics2D g2 = (Graphics2D) g.create();
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setColor(bg);
+                        g2.fillRoundRect(4, 6, getWidth()-8, getHeight()-12, 20, 20);
+                        g2.setColor(fg);
+                        g2.setStroke(new BasicStroke(1f));
+                        g2.drawRoundRect(4, 6, getWidth()-9, getHeight()-13, 20, 20);
+                        super.paintComponent(g);
+                        g2.dispose();
+                    }
+                };
+                lbl.setFont(UITheme.fontBold(12));
+                lbl.setForeground(fg);
+                lbl.setOpaque(false);
+                lbl.setHorizontalAlignment(SwingConstants.CENTER);
+                lbl.setBackground(table.getBackground());
+            }
+
+            return lbl;
+        }
+    }
+
+    // ====================================================================
+    //  ACTION BUTTONS PANEL & RENDERER (col 5)
+    // ====================================================================
+    class ActionButtonsPanel extends JPanel {
+        JButton btnApprove;
+        JButton btnEdit;
+        JButton btnToggle;
+
+        // Colors
+        private static final Color BTN_APPROVE_BG  = new Color(16,  185, 129);
+        private static final Color BTN_APPROVE_FG  = Color.WHITE;
+        private static final Color BTN_EDIT_BG     = new Color(59,  130, 246); // Blue
+        private static final Color BTN_EDIT_FG     = Color.WHITE;
+        private static final Color BTN_LOCK_BG     = new Color(239, 68,  68);  // Red
+        private static final Color BTN_LOCK_FG     = Color.WHITE;
+        private static final Color BTN_UNLOCK_BG   = new Color(107, 114, 128); // Gray
+        private static final Color BTN_UNLOCK_FG   = Color.WHITE;
+
+        public ActionButtonsPanel() {
+            setLayout(new FlowLayout(FlowLayout.CENTER, 4, 6));
+            setOpaque(true);
+
+            btnApprove = makeColorBtn("✅ Duyệt",  BTN_APPROVE_BG, BTN_APPROVE_FG);
+            btnEdit    = makeColorBtn("📝 Sửa",    BTN_EDIT_BG,    BTN_EDIT_FG);
+            btnToggle  = makeColorBtn("❌ Khóa",    BTN_LOCK_BG,    BTN_LOCK_FG);
+
+            add(btnApprove);
+            add(btnEdit);
+            add(btnToggle);
+        }
+
+        private JButton makeColorBtn(String text, Color bg, Color fg) {
+            JButton btn = new JButton(text) {
+                @Override protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    Color c = getModel().isRollover() ? bg.darker() : bg;
+                    g2.setColor(c);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                    super.paintComponent(g);
+                    g2.dispose();
+                }
+            };
+            btn.setFont(UITheme.fontBold(11));
+            btn.setForeground(fg);
+            btn.setOpaque(false);
+            btn.setContentAreaFilled(false);
+            btn.setBorderPainted(false);
+            btn.setFocusPainted(false);
+            btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            btn.setPreferredSize(new Dimension(70, 28));
+            return btn;
+        }
+
+        public void refresh(String status) {
+            setBackground(UITheme.BG_CARD);
+            btnApprove.setVisible("CHỜ DUYỆT".equals(status));
+            if ("ĐÃ KHÓA".equals(status)) {
+                btnToggle.setText("↺ Mở");
+                recolorBtn(btnToggle, BTN_UNLOCK_BG, BTN_UNLOCK_FG);
+            } else {
+                btnToggle.setText("■ Khóa");
+                recolorBtn(btnToggle, BTN_LOCK_BG, BTN_LOCK_FG);
+            }
+        }
+
+        private void recolorBtn(JButton btn, Color bg, Color fg) {
+            btn.putClientProperty("__bg", bg);
+            btn.setForeground(fg);
+        }
+    }
+
+    class ActionButtonsCellRenderer extends javax.swing.table.DefaultTableCellRenderer {
+        ActionButtonsPanel panel = new ActionButtonsPanel();
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            // value in col 5 is the status string (duplicated for convenience)
+            String status = value != null ? value.toString() : "";
+            panel.setBackground(isSelected ? table.getSelectionBackground() : table.getBackground());
+            panel.refresh(status);
+            return panel;
+        }
+    }
+
+    // Legacy – kept to avoid compile errors if referenced elsewhere
+    class ModActionPanel extends JPanel {
+        JLabel lblStatus = new JLabel();
+        JButton btnApprove = new JButton("✔ Duyệt");
+        JButton btnEdit    = new JButton("✎ Sửa");
+        JButton btnToggle  = new JButton("■ Khóa");
+        public ModActionPanel() { setOpaque(true); }
+        public void updateData(String s, boolean sel, JTable t) {}
+    }
+    class ModActionCellRenderer extends javax.swing.table.DefaultTableCellRenderer {
+        ModActionPanel panel = new ModActionPanel();
+        @Override
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean s, boolean f, int r, int c) {
+            return panel;
         }
     }
 }

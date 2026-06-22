@@ -178,4 +178,33 @@ public class AuctionSessionDAO {
         sp.setTransactionStatus(rs.getString("transaction_status"));
         return sp;
     }
+
+    // Cập nhật trạng thái và thời gian bắt đầu khi mở phòng
+    public boolean startSession(String roomId) {
+        String sql = "UPDATE auction_sessions SET status = 'ACTIVE', start_time = ? WHERE room_id = ?";
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setTimestamp(1, new Timestamp(System.currentTimeMillis()));
+            ps.setString(2, roomId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    // Cập nhật trạng thái và thời gian kết thúc khi đóng phòng
+    public boolean endSession(String roomId, String status) {
+        String sql = "UPDATE auction_sessions SET status = ?, end_time = ? WHERE room_id = ?";
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            ps.setTimestamp(2, new Timestamp(System.currentTimeMillis()));
+            ps.setString(3, roomId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
 }

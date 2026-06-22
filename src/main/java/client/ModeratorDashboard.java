@@ -413,7 +413,7 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
         JPanel panel = UITheme.createCardPanel("wrap 1, insets 24, gap 16, fill");
         panel.add(UITheme.sectionHeader("Quản Lý Phòng", "Tạo và quản lý phòng đấu giá"), "growx");
 
-        roomModel = new DefaultTableModel(new Object[]{"Mã Phòng", "Tiêu Đề", "Sellers", "Trạng Thái"}, 0) {
+        roomModel = new DefaultTableModel(new Object[]{"Mã Phòng", "Tiêu Đề", "Người tham gia", "Trạng Thái"}, 0) {
             public boolean isCellEditable(int r, int c) { return false; }
         };
         tblMyRooms = UITheme.styledTable(roomModel);

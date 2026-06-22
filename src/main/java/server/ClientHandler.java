@@ -143,6 +143,9 @@ public class ClientHandler implements Runnable {
                 case REJECT_PRODUCT: handleRejectProduct(data); break;
                 case GET_SUCCESSFUL_TRANSACTIONS: handleGetSuccessfulTransactions(); break;
                 case APPROVE_MOD: handleApproveMod(data); break;
+                case CREATE_MOD_BY_ADMIN: handleCreateModByAdmin(data); break;
+                case UPDATE_MOD_INFO: handleUpdateModInfo(data); break;
+                case TOGGLE_BAN_USER: handleToggleBanUser(data); break;
                 default:
                     System.out.println("[ClientHandler] Lệnh bỏ qua hoặc chưa cài đặt chi tiết: " + type);
             }
@@ -818,8 +821,8 @@ public class ClientHandler implements Runnable {
             sbRooms.append(s.getRoomId()).append(",")
                    .append(modName).append(",")
                    .append(s.getStatus()).append(",")
-                   .append(s.getStartTime() != null ? s.getStartTime().toString().substring(0, 10) : "N/A").append(",")
-                   .append(s.getEndTime() != null ? s.getEndTime().toString().substring(0, 10) : "N/A");
+                   .append(s.getStartTime() != null ? s.getStartTime().toString().substring(0, 19) : "N/A").append(",")
+                   .append(s.getEndTime() != null ? s.getEndTime().toString().substring(0, 19) : "N/A");
         }
         res.put("rooms", sbRooms.toString());
         
@@ -1374,6 +1377,68 @@ public class ClientHandler implements Runnable {
                 handleGetModList();
             } else {
                 sendError("Không thể duyệt tài khoản này!");
+            }
+        } catch (Exception e) {
+            sendError("Dữ liệu không hợp lệ!");
+        }
+    }
+
+    private void handleCreateModByAdmin(Map<String, String> data) {
+        if (currentUser.getRole() != Role.ADMIN) {
+            sendError("Chỉ Admin mới có quyền thực hiện!");
+            return;
+        }
+        String username = data.get("username");
+        String password = data.get("password");
+        String email = data.get("email");
+        String phone = data.get("phone");
+        // isApproved = true since created by Admin
+        String result = userDAO.register(username, password, Role.MODERATOR, phone, email, true);
+        if ("SUCCESS".equals(result)) {
+            sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, null));
+            handleGetModList();
+        } else {
+            sendError("Lỗi tạo Moderator: " + result);
+        }
+    }
+
+    private void handleUpdateModInfo(Map<String, String> data) {
+        if (currentUser.getRole() != Role.ADMIN) {
+            sendError("Chỉ Admin mới có quyền thực hiện!");
+            return;
+        }
+        try {
+            int userId = Integer.parseInt(data.get("userId"));
+            String email = data.get("email");
+            String phone = data.get("phone");
+            String password = data.get("password"); // may be empty
+            boolean ok = userDAO.updateModInfo(userId, email, phone, password);
+            if (ok) {
+                sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, null));
+                handleGetModList();
+            } else {
+                sendError("Lỗi cập nhật thông tin!");
+            }
+        } catch (Exception e) {
+            sendError("Dữ liệu không hợp lệ!");
+        }
+    }
+
+    private void handleToggleBanUser(Map<String, String> data) {
+        if (currentUser.getRole() != Role.ADMIN) {
+            sendError("Chỉ Admin mới có quyền thực hiện!");
+            return;
+        }
+        try {
+            int userId = Integer.parseInt(data.get("userId"));
+            boolean isBanned = Boolean.parseBoolean(data.get("isBanned")); // The *new* state
+            boolean ok = userDAO.banUser(userId, isBanned);
+            if (ok) {
+                sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, null));
+                handleGetModList();
+                handleGetUserList();
+            } else {
+                sendError("Lỗi khi khóa/mở khóa tài khoản!");
             }
         } catch (Exception e) {
             sendError("Dữ liệu không hợp lệ!");

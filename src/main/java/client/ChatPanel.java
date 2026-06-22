@@ -10,6 +10,13 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.util.Base64;
 
 /**
  * ChatPanel — Chat realtime theo phong cách sáng, đồng nhất với Dashboard.
@@ -51,6 +58,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
     private JTextArea txtInput;
     private JButton btnSend;
     private JButton btnEmoji;
+    private JButton btnImage;
 
     public ChatPanel() {
         this.myUsername = NetworkClient.getInstance().getCurrentUsername();
@@ -261,9 +269,25 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         btnSend.setPreferredSize(new Dimension(40, 40));
         btnSend.addActionListener(e -> sendMessage());
 
+        btnImage = new JButton("🖼");
+        btnImage.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 18));
+        btnImage.setBackground(BG_INPUT);
+        btnImage.setForeground(TEXT_SOFT);
+        btnImage.setBorderPainted(false);
+        btnImage.setFocusPainted(false);
+        btnImage.setContentAreaFilled(false);
+        btnImage.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnImage.setPreferredSize(new Dimension(36, 36));
+        btnImage.addActionListener(e -> showImagePicker());
+        btnImage.addMouseListener(new MouseAdapter() {
+            public void mouseEntered(MouseEvent e) { btnImage.setOpaque(true); btnImage.setBackground(UITheme.BG_ROW_ALT); }
+            public void mouseExited(MouseEvent e)  { btnImage.setOpaque(false); }
+        });
+
         JPanel leftTools = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         leftTools.setOpaque(false);
         leftTools.add(btnEmoji);
+        leftTools.add(btnImage);
 
         inputArea.add(leftTools, BorderLayout.WEST);
         inputArea.add(inputScroll, BorderLayout.CENTER);
@@ -278,6 +302,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         this.isPrivateChat = false;
         messages.clear();
         SwingUtilities.invokeLater(() -> {
+            if (btnImage != null) btnImage.setVisible(false);
             lblChatTarget.setIcon(org.kordamp.ikonli.swing.FontIcon.of(org.kordamp.ikonli.feather.Feather.HOME, 18, UITheme.AMBER));
             lblChatTarget.setText("Phòng: " + roomId);
             lblStatus.setText("● Chat chung phòng đấu giá");
@@ -292,6 +317,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         this.isPrivateChat = true;
         messages.clear();
         SwingUtilities.invokeLater(() -> {
+            if (btnImage != null) btnImage.setVisible(true);
             lblChatTarget.setIcon(org.kordamp.ikonli.swing.FontIcon.of(org.kordamp.ikonli.feather.Feather.MESSAGE_SQUARE, 18, UITheme.INFO));
             lblChatTarget.setText(targetUsername);
             lblStatus.setText("● Trực tuyến");
@@ -302,7 +328,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             java.util.List<String[]> buffered = pendingMessages.remove(targetUsername);
             if (buffered != null) {
                 for (String[] m : buffered) {
-                    appendBubble(m[0], m[1], false);
+                    appendBubble(m[0], m[1], m.length > 2 ? m[2] : null, false);
                 }
             }
         });
@@ -336,8 +362,55 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             NetworkClient.getInstance().sendMessage(MessageType.CHAT_ROOM, data);
         }
 
-        appendBubble(myUsername != null ? myUsername : "Tôi", msg, true);
+        appendBubble(myUsername != null ? myUsername : "Tôi", msg, null, true);
         txtInput.setText("");
+    }
+
+    private void showImagePicker() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = fileChooser.getSelectedFile();
+            try {
+                BufferedImage img = ImageIO.read(selectedFile);
+                if (img == null) return;
+                
+                // Giới hạn kích thước tối đa 300px để tránh packet quá lớn
+                int w = img.getWidth();
+                int h = img.getHeight();
+                int maxDim = 300;
+                if (w > maxDim || h > maxDim) {
+                    float ratio = Math.min((float) maxDim / w, (float) maxDim / h);
+                    int newW = Math.round(w * ratio);
+                    int newH = Math.round(h * ratio);
+                    Image tmp = img.getScaledInstance(newW, newH, Image.SCALE_SMOOTH);
+                    BufferedImage resized = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_ARGB);
+                    Graphics2D g2d = resized.createGraphics();
+                    g2d.drawImage(tmp, 0, 0, null);
+                    g2d.dispose();
+                    img = resized;
+                }
+                
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ImageIO.write(img, "png", baos);
+                String base64Image = Base64.getEncoder().encodeToString(baos.toByteArray());
+                
+                sendImage(base64Image);
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Không thể tải ảnh", "Lỗi", JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+    
+    private void sendImage(String base64Image) {
+        if (!isPrivateChat || currentReceiverUsername == null) return;
+        Map<String, String> data = new HashMap<>();
+        data.put("content", "[Hình ảnh]");
+        data.put("image", base64Image);
+        data.put("receiverUsername", currentReceiverUsername);
+        NetworkClient.getInstance().sendMessage(MessageType.CHAT_PRIVATE, data);
+        appendBubble(myUsername != null ? myUsername : "Tôi", "[Hình ảnh]", base64Image, true);
     }
 
     // ─── Emoji Picker ─────────────────────────────────────────────────────────
@@ -378,10 +451,10 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
     }
 
     // ─── Bubble Rendering ─────────────────────────────────────────────────────
-    private void appendBubble(String sender, String content, boolean isMe) {
+    private void appendBubble(String sender, String content, String imageBase64, boolean isMe) {
         SwingUtilities.invokeLater(() -> {
             String time = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
-            JPanel bubble = createBubble(sender, content, time, isMe);
+            JPanel bubble = createBubble(sender, content, time, imageBase64, isMe);
 
             JPanel wrapper = new JPanel(new FlowLayout(isMe ? FlowLayout.RIGHT : FlowLayout.LEFT, 4, 2));
             wrapper.setOpaque(false);
@@ -395,7 +468,7 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         });
     }
 
-    private JPanel createBubble(String sender, String content, String time, boolean isMe) {
+    private JPanel createBubble(String sender, String content, String time, String imageBase64, boolean isMe) {
         JPanel outer = new JPanel();
         outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
         outer.setOpaque(false);
@@ -455,6 +528,18 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
         lblContent.setForeground(textColor);
         bubble.add(lblContent);
 
+        if (imageBase64 != null && !imageBase64.isEmpty()) {
+            try {
+                byte[] b = Base64.getDecoder().decode(imageBase64);
+                BufferedImage bi = ImageIO.read(new ByteArrayInputStream(b));
+                if (bi != null) {
+                    JLabel lblImg = new JLabel(new ImageIcon(bi));
+                    lblImg.setBorder(new EmptyBorder(5, 0, 5, 0));
+                    bubble.add(lblImg);
+                }
+            } catch (Exception ignored) {}
+        }
+
         JLabel lblTime = new JLabel(time);
         lblTime.setFont(new Font("Segoe UI", Font.PLAIN, 10));
         lblTime.setForeground(timeFg);
@@ -508,21 +593,22 @@ public class ChatPanel extends JPanel implements NetworkClient.MessageListener {
             if (roomId != null && roomId.equals(currentRoomId)) {
                 String sender  = data.getOrDefault("senderName", "Hệ thống");
                 String content = data.getOrDefault("content", "");
-                if (!sender.equals(myUsername)) appendBubble(sender, content, false);
+                if (!sender.equals(myUsername)) appendBubble(sender, content, null, false);
             }
         } else if (type == MessageType.CHAT_PRIVATE) {
             String sender  = data.get("senderName");
             String content = data.getOrDefault("content", "");
+            String imageBase64 = data.get("image");
             if (sender == null || sender.equals(myUsername)) return;
             
             if (isPrivateChat && sender.equals(currentReceiverUsername)) {
                 // Active conversation - show immediately
-                appendBubble(sender, content, false);
+                appendBubble(sender, content, imageBase64, false);
             } else {
                 // Buffer the message until the user is selected
                 pendingMessages
                     .computeIfAbsent(sender, k -> new java.util.LinkedList<>())
-                    .add(new String[]{sender, content});
+                    .add(new String[]{sender, content, imageBase64});
             }
         }
     }

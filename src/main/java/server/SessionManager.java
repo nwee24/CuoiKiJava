@@ -138,5 +138,20 @@ public class SessionManager {
         }
         System.out.println("[SessionManager] Đã broadcast room list tới " + onlineHandlers.size() + " clients.");
     }
+
+    /**
+     * Gửi tín hiệu yêu cầu Admin reload dữ liệu phòng khi trạng thái phòng thay đổi.
+     * (Không gửi dữ liệu thực — Admin tự gọi lại GET_ADMIN_STATS để tải mới nhất.)
+     */
+    public void notifyAdminRoomChanged() {
+        Map<String, String> notify = new HashMap<>();
+        notify.put("trigger", "ROOM_STATUS_CHANGED");
+        String xml = XmlMessageParser.serialize(MessageType.ROOM_STATUS_UPDATE, notify);
+        for (ClientHandler handler : onlineHandlers.values()) {
+            if (handler.getCurrentRole() == model.Role.ADMIN) {
+                handler.sendMessage(xml);
+            }
+        }
+    }
 }
 

@@ -46,7 +46,7 @@ public class LoginPanel extends JPanel implements NetworkClient.MessageListener 
         };
         cardShadowPanel.setOpaque(false);
         cardShadowPanel.setBorder(new EmptyBorder(10, 10, 18, 18)); // Chừa biên cho đổ bóng
-        cardShadowPanel.setPreferredSize(new Dimension(1000, 600));
+        cardShadowPanel.setPreferredSize(new Dimension(1000, 660));
         cardShadowPanel.add(cardPanel, BorderLayout.CENTER);
 
         // ======== CỘT TRÁI (ẢNH VÀ CHỮ OVERLAY CẦU KỲ) ========
@@ -123,9 +123,9 @@ public class LoginPanel extends JPanel implements NetworkClient.MessageListener 
         rightPanel.add(subTitle, "growx");
 
         // Username
-        rightPanel.add(fieldLabel("Tên đăng nhập / Email"), "growx");
+        rightPanel.add(fieldLabel("Tài khoản / Email / SĐT"), "growx");
         
-        txtUsername = UITheme.customTextField("Nhập tên đăng nhập...", UITheme.BG_DARK, UITheme.BORDER);
+        txtUsername = UITheme.customTextField("Nhập tài khoản, email hoặc SĐT...", UITheme.BG_DARK, UITheme.BORDER);
         rightPanel.add(txtUsername, "growx, h 46!");
 
         // Password
