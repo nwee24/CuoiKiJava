@@ -1,6 +1,6 @@
 <config>
   <server>
-    <host>localhost</host>
+    <host>172.26.64.183</host>
     <port>9999</port>
     <keystore>keystore.jks</keystore>
     <keystorePassword>changeit</keystorePassword>

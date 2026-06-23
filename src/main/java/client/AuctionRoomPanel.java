@@ -295,7 +295,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         p.add(lblBidder, g);
 
         // Countdown
-        lblCountdown = new JLabel("Cho bat dau...", SwingConstants.CENTER);
+        lblCountdown = new JLabel("Chờ bắt đầu...", SwingConstants.CENTER);
         lblCountdown.setFont(new Font("Segoe UI", Font.BOLD, 22));
         lblCountdown.setForeground(AMBER);
         g.gridy = 2; g.insets = new Insets(14, 4, 14, 4);
@@ -342,7 +342,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         p.setBorder(BorderFactory.createCompoundBorder(
             new MatteBorder(1,0,0,0,BORDER), new EmptyBorder(12, 0, 0, 0)));
 
-        JButton btnStart = new JButton("▶ Bat Dau");
+        JButton btnStart = new JButton("▶ Bắt Đầu");
         styleBtn(btnStart, new Color(20,40,80), new Color(100,150,255));
         btnStart.addActionListener(e -> {
             Map<String, String> params = new HashMap<>();
@@ -350,7 +350,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             NetworkClient.getInstance().sendMessage(MessageType.OPEN_AUCTION, params);
         });
 
-        btnExtend = new JButton("+30s Gia Han");
+        btnExtend = new JButton("+30s Gia Hạn");
         styleBtn(btnExtend, new Color(20,60,40), SUCCESS);
         btnExtend.addActionListener(e -> {
             Map<String, String> params = new HashMap<>();
@@ -358,7 +358,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             NetworkClient.getInstance().sendMessage(MessageType.EXTEND_TIME, params);
         });
 
-        btnNextProduct = new JButton(">> Chuyen SP");
+        btnNextProduct = new JButton(">> Chuyển SP");
         styleBtn(btnNextProduct, new Color(40,40,20), AMBER);
         btnNextProduct.addActionListener(e -> {
             int c = JOptionPane.showConfirmDialog(this, "Bỏ qua sản phẩm hiện tại?", "Xác nhận", JOptionPane.YES_NO_OPTION);
@@ -369,7 +369,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             }
         });
 
-        btnCloseRoom = new JButton("[ ] Dong Phong");
+        btnCloseRoom = new JButton("[ ] Đóng Phòng");
         styleBtn(btnCloseRoom, new Color(60,15,15), DANGER);
         btnCloseRoom.addActionListener(e -> {
             int c = JOptionPane.showConfirmDialog(this, "Đóng phòng đấu giá?", "Xác nhận", JOptionPane.YES_NO_OPTION);
@@ -381,7 +381,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         });
 
         // Nút thêm sản phẩm (Moderator only)
-        JButton btnAddProduct = new JButton("+ Them SP");
+        JButton btnAddProduct = new JButton("+ Thêm SP");
         styleBtn(btnAddProduct, new Color(40,20,60), new Color(167,139,250));
         btnAddProduct.addActionListener(e -> openAddProductDialog());
         
@@ -399,7 +399,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         p.setBackground(BG_PANEL);
         p.setBorder(new MatteBorder(1,0,0,0,BORDER));
 
-        JLabel title = new JLabel("  Lich Su Dat Gia");
+        JLabel title = new JLabel("  Lịch Sử Đặt Giá");
         title.setFont(new Font("Segoe UI", Font.BOLD, 12));
         title.setForeground(MUTED);
         title.setBackground(BG_CARD);
@@ -429,7 +429,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         p.setBackground(BG_PANEL);
         p.setBorder(new MatteBorder(1,1,0,0,BORDER));
 
-        JLabel title = new JLabel("  Chat Phong");
+        JLabel title = new JLabel("  Chat Phòng");
         title.setFont(new Font("Segoe UI", Font.BOLD, 12));
         title.setForeground(MUTED);
         title.setBackground(BG_CARD);
@@ -505,8 +505,8 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
                     }
                     break;
                 case ERROR:
-                    JOptionPane.showMessageDialog(this, "Loi: " + data.get("message"),
-                        "Loi", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(this, "Lỗi: " + data.get("message"),
+                        "Lỗi", JOptionPane.ERROR_MESSAGE);
                     break;
                 default: break;
             }
@@ -545,8 +545,8 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         lastBidAmount = price;
         lastBidder = "";
 
-        txtBidHistory.append("\n--- San pham moi: " + name + " ---\n");
-        txtBidHistory.append("Gia khoi diem: " + formatVnd(price) + "\n");
+        txtBidHistory.append("\n--- Sản phẩm mới: " + name + " ---\n");
+        txtBidHistory.append("Giá khởi điểm: " + formatVnd(price) + "\n");
 
         // Khởi động đếm ngược từ giá trị mặc định (server sẽ sync ngay qua BID_UPDATE)
         localCountdown = 30;
@@ -614,7 +614,7 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
             lblBidder.setText("Người đặt cao nhất: " + bidder);
             if (isNewBid) {
                 if (!bidder.equals(myUsername) && myHighestBid.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                    txtBidHistory.append("[!] Gia ban bi vuot boi " + bidder + "\n");
+                    txtBidHistory.append("[!] Giá bạn bị vượt bởi " + bidder + "\n");
                 }
                 txtBidHistory.append(bidder + " đặt: " + formatVnd(bid) + "\n");
                 scrollHistory();
@@ -656,9 +656,9 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         String pname  = data.getOrDefault("productName", "");
         String sessionProductId = data.get("sessionProductId");
 
-        lblCountdown.setText("Da chot gia");
+        lblCountdown.setText("Đã chốt giá");
         lblCountdown.setForeground(SUCCESS);
-        txtBidHistory.append("\n[OK] Chot: " + formatVnd(price) + " --- " + winner + "\n");
+        txtBidHistory.append("\n[OK] Chốt: " + formatVnd(price) + " --- " + winner + "\n");
         scrollHistory();
         btnPlaceBid.setEnabled(false);
 

@@ -6,7 +6,7 @@ import java.awt.*;
 import java.util.Map;
 import com.formdev.flatlaf.FlatDarkLaf;
 
-public class MainFrame extends JFrame implements NetworkClient.MessageListener {
+public class    MainFrame extends JFrame implements NetworkClient.MessageListener {
     private CardLayout cardLayout;
     private JPanel mainPanel;
 
