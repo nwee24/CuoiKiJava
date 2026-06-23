@@ -35,6 +35,9 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
     private boolean isModerator = false;
     private javax.swing.Timer flashTimer;
     private boolean flashState = false;
+
+    private String lastBidAmount = "";
+    private String lastBidder = "";
     private int currentProductSellerId = 0;
 
     // ─── Local countdown (chạy mỗi giây, sync với server) ────────────────────
@@ -539,6 +542,8 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         btnPlaceBid.setText(isOwn ? "Sản phẩm của bạn" : "ĐẶT GIÁ");
         btnPlaceBid.setBackground(isOwn ? new Color(50, 50, 70) : ACCENT);
         myHighestBid = java.math.BigDecimal.ZERO;
+        lastBidAmount = price;
+        lastBidder = "";
 
         txtBidHistory.append("\n--- San pham moi: " + name + " ---\n");
         txtBidHistory.append("Gia khoi diem: " + formatVnd(price) + "\n");
@@ -549,11 +554,11 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         lblCountdown.setForeground(AMBER);
         countdownTimer.start();
 
-        // Load image
         String img64 = data.get("imageData");
         if (img64 != null && !img64.isEmpty()) {
             try {
-                byte[] b = Base64.getDecoder().decode(img64);
+                String firstImage = img64.split(";;;")[0];
+                byte[] b = Base64.getDecoder().decode(firstImage);
                 BufferedImage bi = ImageIO.read(new ByteArrayInputStream(b));
                 if (bi != null) {
                     BufferedImage rounded = new BufferedImage(240, 200, BufferedImage.TYPE_INT_ARGB);
@@ -604,13 +609,18 @@ public class AuctionRoomPanel extends JPanel implements NetworkClient.MessageLis
         try { sec = Integer.parseInt(secStr); } catch (Exception e) { sec = 0; }
 
         lblHighestBid.setText(formatVnd(bid));
+        boolean isNewBid = !bid.equals(lastBidAmount) || !bidder.equals(lastBidder);
         if (!bidder.isEmpty()) {
             lblBidder.setText("Người đặt cao nhất: " + bidder);
-            if (!bidder.equals(myUsername) && myHighestBid.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                txtBidHistory.append("[!] Gia ban bi vuot boi " + bidder + "\n");
+            if (isNewBid) {
+                if (!bidder.equals(myUsername) && myHighestBid.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    txtBidHistory.append("[!] Gia ban bi vuot boi " + bidder + "\n");
+                }
+                txtBidHistory.append(bidder + " đặt: " + formatVnd(bid) + "\n");
+                scrollHistory();
+                lastBidAmount = bid;
+                lastBidder = bidder;
             }
-            txtBidHistory.append(bidder + " đặt: " + formatVnd(bid) + "\n");
-            scrollHistory();
         }
 
         // Sync countdown từ server (tránh lệch do network delay)

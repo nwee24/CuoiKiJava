@@ -380,6 +380,12 @@ public class AuctionRoom {
     public void setTitle(String title) { this.title = title; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public int getParticipantCount() {
+        return sellerHandlers.size() + buyerHandlers.size() + (moderatorHandler != null ? 1 : 0);
+    }
+    public String getModeratorName() {
+        return (moderatorHandler != null && moderatorHandler.getCurrentUser() != null) ? moderatorHandler.getCurrentUser().getUsername() : "N/A";
+    }
     public void addInvitedSeller(String username) { invitedSellers.add(username); }
     public String getSellersDisplay() {
         return invitedSellers.isEmpty() ? "(Chưa có)" : String.join(" & ", invitedSellers);

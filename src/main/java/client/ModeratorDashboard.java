@@ -236,7 +236,8 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
         imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
         if (!imageData.isEmpty()) {
             try {
-                byte[] bytes = Base64.getDecoder().decode(imageData.replaceAll("[^A-Za-z0-9+/=]", ""));
+                String firstImage = imageData.split(";;;")[0];
+                byte[] bytes = Base64.getDecoder().decode(firstImage.replaceAll("[^A-Za-z0-9+/=]", ""));
                 BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
                 if (bi != null) {
                     imgLabel.setIcon(new ImageIcon(bi.getScaledInstance(80, 80, Image.SCALE_SMOOTH)));
@@ -379,27 +380,35 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
         top.add(infoPanel, BorderLayout.CENTER);
         
         if (imageData != null && !imageData.isEmpty()) {
-            JLabel imgLabel = new JLabel();
-            imgLabel.setPreferredSize(new Dimension(150, 150));
-            imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            imgLabel.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
-            try {
-                String base64Str = imageData;
-                if (base64Str.startsWith("data:image")) {
-                    base64Str = base64Str.substring(base64Str.indexOf(",") + 1);
+            JPanel imagesPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+            String[] base64Images = imageData.split(";;;");
+            for (String base64Str : base64Images) {
+                JLabel imgLabel = new JLabel();
+                imgLabel.setPreferredSize(new Dimension(150, 150));
+                imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                imgLabel.setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
+                try {
+                    if (base64Str.startsWith("data:image")) {
+                        base64Str = base64Str.substring(base64Str.indexOf(",") + 1);
+                    }
+                    byte[] bytes = Base64.getDecoder().decode(base64Str.replaceAll("[^A-Za-z0-9+/=]", ""));
+                    BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
+                    if (bi != null) {
+                        Image scaledImage = bi.getScaledInstance(150, 150, Image.SCALE_SMOOTH);
+                        imgLabel.setIcon(new ImageIcon(scaledImage));
+                    } else {
+                        imgLabel.setText("No Image");
+                    }
+                } catch (Exception ex) {
+                    imgLabel.setText("Lỗi Ảnh");
                 }
-                byte[] bytes = Base64.getDecoder().decode(base64Str.replaceAll("[^A-Za-z0-9+/=]", ""));
-                BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
-                if (bi != null) {
-                    Image scaledImage = bi.getScaledInstance(150, 150, Image.SCALE_SMOOTH);
-                    imgLabel.setIcon(new ImageIcon(scaledImage));
-                } else {
-                    imgLabel.setText("No Image");
-                }
-            } catch (Exception ex) {
-                imgLabel.setText("Lỗi Ảnh");
+                imagesPanel.add(imgLabel);
             }
-            top.add(imgLabel, BorderLayout.EAST);
+            JScrollPane scrollImages = new JScrollPane(imagesPanel);
+            scrollImages.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+            scrollImages.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);
+            scrollImages.setPreferredSize(new Dimension(600, 180));
+            p.add(scrollImages, BorderLayout.SOUTH);
         }
         
         p.add(top, BorderLayout.NORTH);
@@ -527,12 +536,21 @@ public class ModeratorDashboard extends JPanel implements NetworkClient.MessageL
                 if (roomsStr != null && !roomsStr.isEmpty()) {
                     for (String r : roomsStr.split("\\|")) {
                         String[] parts = r.split(",", -1);
-                        roomModel.addRow(new Object[]{
-                            parts.length > 0 ? parts[0] : "",
-                            parts.length > 1 ? parts[1] : "",
-                            parts.length > 2 ? parts[2] : "",
-                            parts.length > 3 ? parts[3] : "ACTIVE"
-                        });
+                        if (parts.length >= 5) {
+                            roomModel.addRow(new Object[]{
+                                parts[0],
+                                parts[1],
+                                parts[3],
+                                parts[4]
+                            });
+                        } else {
+                            roomModel.addRow(new Object[]{
+                                parts.length > 0 ? parts[0] : "",
+                                parts.length > 1 ? parts[1] : "",
+                                parts.length > 2 ? parts[2] : "",
+                                parts.length > 3 ? parts[3] : "ACTIVE"
+                            });
+                        }
                     }
                 }
             } else if (type == MessageType.GET_USER_LIST) {

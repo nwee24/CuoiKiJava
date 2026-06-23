@@ -482,7 +482,11 @@ public class UserDashboard extends JPanel implements NetworkClient.MessageListen
                 if (roomsStr != null && !roomsStr.isEmpty()) {
                     for (String r : roomsStr.split("\\|")) {
                         String[] p = r.split(",", -1);
-                        if (p.length >= 4) roomModel.addRow(new Object[]{p[0], p[1], p[2], p[3]});
+                        if (p.length >= 5) {
+                            roomModel.addRow(new Object[]{p[0], p[1], p[2], p[4]});
+                        } else if (p.length >= 4) {
+                            roomModel.addRow(new Object[]{p[0], p[1], p[2], p[3]});
+                        }
                     }
                 }
                 if (lblRoomCount != null) {

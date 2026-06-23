@@ -8,6 +8,7 @@ import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.util.Base64;
 import java.util.HashMap;
@@ -24,7 +25,7 @@ public class ProductSubmitForm extends JPanel {
     private JTextField txtPrice;
     private JLabel lblImagePreview;
     private JButton btnSelectImage, btnSubmit;
-    private String base64Image = "";
+    private java.util.List<String> base64Images = new java.util.ArrayList<>();
 
     public ProductSubmitForm() {
         setLayout(new BorderLayout());
@@ -109,35 +110,54 @@ public class ProductSubmitForm extends JPanel {
 
     private void selectImage() {
         JFileChooser chooser = new JFileChooser();
+        chooser.setMultiSelectionEnabled(true);
         chooser.setFileFilter(new FileNameExtensionFilter("Hình ảnh (JPG, PNG)", "jpg", "jpeg", "png"));
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            if (file.length() > 5 * 1024 * 1024) {
-                JOptionPane.showMessageDialog(this, "Ảnh quá lớn. Vui lòng chọn < 5MB.", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
-                return;
+            File[] files = chooser.getSelectedFiles();
+            base64Images.clear();
+            for (File file : files) {
+                if (file.length() > 5 * 1024 * 1024) {
+                    JOptionPane.showMessageDialog(this, "Ảnh " + file.getName() + " quá lớn. Vui lòng chọn < 5MB.", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
+                    continue;
+                }
+                try {
+                    BufferedImage orig = ImageIO.read(file);
+                    if (orig == null) continue;
+                    BufferedImage resized = new BufferedImage(300, 300, BufferedImage.TYPE_INT_RGB);
+                    Graphics2D g2 = resized.createGraphics();
+                    g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    g2.setColor(Color.WHITE);
+                    g2.fillRect(0, 0, 300, 300);
+                    double scale = Math.min(300.0 / orig.getWidth(), 300.0 / orig.getHeight());
+                    int w = (int)(orig.getWidth() * scale);
+                    int h = (int)(orig.getHeight() * scale);
+                    g2.drawImage(orig, (300 - w) / 2, (300 - h) / 2, w, h, null);
+                    g2.dispose();
+
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    ImageIO.write(resized, "jpg", baos);
+                    String b64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+                    base64Images.add(b64);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Lỗi đọc ảnh " + file.getName() + ": " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+                }
             }
-            try {
-                BufferedImage orig = ImageIO.read(file);
-                BufferedImage resized = new BufferedImage(300, 300, BufferedImage.TYPE_INT_RGB);
-                Graphics2D g2 = resized.createGraphics();
-                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                g2.setColor(Color.WHITE);
-                g2.fillRect(0, 0, 300, 300);
-                double scale = Math.min(300.0 / orig.getWidth(), 300.0 / orig.getHeight());
-                int w = (int)(orig.getWidth() * scale);
-                int h = (int)(orig.getHeight() * scale);
-                g2.drawImage(orig, (300 - w) / 2, (300 - h) / 2, w, h, null);
-                g2.dispose();
-
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                ImageIO.write(resized, "jpg", baos);
-                base64Image = Base64.getEncoder().encodeToString(baos.toByteArray());
-
-                Image preview = resized.getScaledInstance(76, 76, Image.SCALE_SMOOTH);
-                lblImagePreview.setIcon(new ImageIcon(preview));
-                lblImagePreview.setText("");
-            } catch (Exception ex) {
-                JOptionPane.showMessageDialog(this, "Lỗi đọc ảnh: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+            if (!base64Images.isEmpty()) {
+                if (base64Images.size() == 1) {
+                    try {
+                        byte[] bytes = Base64.getDecoder().decode(base64Images.get(0));
+                        BufferedImage bi = ImageIO.read(new ByteArrayInputStream(bytes));
+                        Image preview = bi.getScaledInstance(76, 76, Image.SCALE_SMOOTH);
+                        lblImagePreview.setIcon(new ImageIcon(preview));
+                        lblImagePreview.setText("");
+                    } catch (Exception e) {}
+                } else {
+                    lblImagePreview.setIcon(null);
+                    lblImagePreview.setText("Đã chọn " + base64Images.size() + " ảnh");
+                }
+            } else {
+                lblImagePreview.setIcon(null);
+                lblImagePreview.setText("Chưa chọn ảnh");
             }
         }
     }
@@ -147,7 +167,7 @@ public class ProductSubmitForm extends JPanel {
         String desc = txtDesc.getText().trim();
         String price = txtPrice.getText().trim();
 
-        if (name.isEmpty() || price.isEmpty() || base64Image.isEmpty()) {
+        if (name.isEmpty() || price.isEmpty() || base64Images.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Vui lòng nhập tên, giá và chọn ảnh.", "Thiếu thông tin", JOptionPane.WARNING_MESSAGE);
             return;
         }
@@ -162,14 +182,14 @@ public class ProductSubmitForm extends JPanel {
         data.put("productName", name);
         data.put("description", desc);
         data.put("startingPrice", price);
-        data.put("imageData", base64Image);
+        data.put("imageData", String.join(";;;", base64Images));
 
         NetworkClient.getInstance().sendMessage(MessageType.SUBMIT_PRODUCT, data);
 
         txtName.setText("");
         txtDesc.setText("");
         txtPrice.setText("");
-        base64Image = "";
+        base64Images.clear();
         lblImagePreview.setIcon(null);
         lblImagePreview.setText("Chưa chọn ảnh");
         

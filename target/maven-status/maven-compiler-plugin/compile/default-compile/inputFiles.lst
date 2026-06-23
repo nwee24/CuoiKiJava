@@ -17,6 +17,8 @@ D:\CuoiKiJava\CuoiKiJava\src\main\java\model\Role.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\model\User.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\shared\MessageType.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\client\LoginPanel.java
+D:\CuoiKiJava\CuoiKiJava\src\main\java\client\ModFormDialog.java
+D:\CuoiKiJava\CuoiKiJava\src\main\java\dao\AdminDAO.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\client\NetworkClient.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\dao\AuctionSessionDAO.java
 D:\CuoiKiJava\CuoiKiJava\src\main\java\client\ProductSubmitForm.java

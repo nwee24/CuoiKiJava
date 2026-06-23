@@ -26,6 +26,9 @@ public class ClientHandler implements Runnable {
     public Role getCurrentRole() {
         return currentUser != null ? currentUser.getRole() : null;
     }
+    public User getCurrentUser() {
+        return currentUser;
+    }
 
     public ClientHandler(Socket socket) {
         this.socket = socket;
@@ -68,11 +71,22 @@ public class ClientHandler implements Runnable {
         } catch (Exception e) {
             System.out.println("[ClientHandler] Ngắt kết nối: " + e.getMessage());
         } finally {
-            // Hủy đăng ký khỏi danh sách online
             if (currentUser != null) {
-                SessionManager.getInstance().unregisterHandler(currentUser.getUsername());
+                boolean changed = false;
+                for (AuctionRoom room : AuctionManager.getInstance().listActiveRooms()) {
+                    if (room.getParticipantCount() > 0) {
+                        room.leaveRoom(this);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    SessionManager.getInstance().broadcastRoomListUpdate();
+                }
             }
-            try { socket.close(); } catch (Exception e) {}
+            SessionManager.getInstance().unregisterHandler(currentUser != null ? currentUser.getUsername() : null);
+            try {
+                if (socket != null && !socket.isClosed()) socket.close();
+            } catch (Exception e) { e.printStackTrace(); }
         }
     }
 
@@ -368,7 +382,10 @@ public class ClientHandler implements Runnable {
     private void handleLeaveRoom(Map<String, String> data) {
         String roomId = data.get("roomId");
         AuctionRoom room = AuctionManager.getInstance().getRoom(roomId);
-        if (room != null) room.leaveRoom(this);
+        if (room != null) {
+            room.leaveRoom(this);
+            SessionManager.getInstance().broadcastRoomListUpdate();
+        }
     }
 
     private void handleJoinRoom(Map<String, String> data) {
@@ -380,6 +397,7 @@ public class ClientHandler implements Runnable {
             res.put("roomId", roomId);
             res.put("status", "JOINED");
             sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, res));
+            SessionManager.getInstance().broadcastRoomListUpdate();
         } else sendError("Phòng không tồn tại.");
     }
 
@@ -675,13 +693,14 @@ public class ClientHandler implements Runnable {
         }
     }
 
-    private void handleGetRoomList() {
+    void handleGetRoomList() {
         StringBuilder sbAll  = new StringBuilder();
         StringBuilder sbMine = new StringBuilder();
         for (AuctionRoom room : AuctionManager.getInstance().listActiveRooms()) {
             String title   = room.getTitle() != null ? room.getTitle() : "Phiên Đấu Giá";
-            String sellers = room.getSellersDisplay();
-            String info    = room.getRoomId() + "," + title + "," + sellers + ",ACTIVE";
+            String modName = room.getModeratorName();
+            int partCount  = room.getParticipantCount();
+            String info    = room.getRoomId() + "," + title + "," + modName + "," + partCount + ",ACTIVE";
             if (sbAll.length() > 0) sbAll.append("|");
             sbAll.append(info);
             if (room.getModeratorHandler() == this) {

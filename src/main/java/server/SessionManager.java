@@ -123,18 +123,8 @@ public class SessionManager {
      * Được gọi sau khi tạo phòng mới.
      */
     public void broadcastRoomListUpdate() {
-        StringBuilder sbAll = new StringBuilder();
-        for (AuctionRoom room : AuctionManager.getInstance().listActiveRooms()) {
-            if (sbAll.length() > 0) sbAll.append("|");
-            sbAll.append(room.getRoomId()).append(",Phiên Đấu Giá,HệThống,ACTIVE");
-        }
-        Map<String, String> res = new HashMap<>();
-        res.put("roomList", sbAll.toString());
-        res.put("myRoomList", ""); // Clients sẽ tự lọc
-        String xml = XmlMessageParser.serialize(MessageType.ROOM_INFO, res);
-
         for (ClientHandler handler : onlineHandlers.values()) {
-            handler.sendMessage(xml);
+            handler.handleGetRoomList();
         }
         System.out.println("[SessionManager] Đã broadcast room list tới " + onlineHandlers.size() + " clients.");
     }
