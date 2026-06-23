@@ -1173,6 +1173,7 @@ public class ClientHandler implements Runnable {
         try {
             int productId = Integer.parseInt(productIdStr);
             dao.ProductDAO productDAO = new dao.ProductDAO();
+            model.Product product = productDAO.findById(productId);
             
             boolean success = productDAO.updateStatus(productId, "APPROVED");
             if (success) {
@@ -1180,6 +1181,19 @@ public class ClientHandler implements Runnable {
                 res.put("message", "Đã phê duyệt sản phẩm #" + productId);
                 sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, res));
                 System.out.println("[Server] Moderator " + currentUser.getUsername() + " đã phê duyệt sản phẩm #" + productId);
+                
+                // NOTIFY SELLER
+                if (product != null) {
+                    model.User seller = userDAO.findById(product.getSellerId());
+                    if (seller != null) {
+                        ClientHandler sellerHandler = SessionManager.getInstance().getHandlerByUsername(seller.getUsername());
+                        if (sellerHandler != null) {
+                            Map<String, String> notifyMsg = new HashMap<>();
+                            notifyMsg.put("message", "Sản phẩm '" + product.getName() + "' của bạn đã được phê duyệt!");
+                            sellerHandler.sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, notifyMsg));
+                        }
+                    }
+                }
             } else {
                 sendError("Không thể phê duyệt sản phẩm!");
             }
@@ -1203,6 +1217,7 @@ public class ClientHandler implements Runnable {
         try {
             int productId = Integer.parseInt(productIdStr);
             dao.ProductDAO productDAO = new dao.ProductDAO();
+            model.Product product = productDAO.findById(productId);
             
             boolean success = productDAO.updateStatus(productId, "REJECTED");
             if (success) {
@@ -1210,6 +1225,19 @@ public class ClientHandler implements Runnable {
                 res.put("message", "Đã từ chối sản phẩm #" + productId);
                 sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, res));
                 System.out.println("[Server] Moderator " + currentUser.getUsername() + " đã từ chối sản phẩm #" + productId);
+                
+                // NOTIFY SELLER
+                if (product != null) {
+                    model.User seller = userDAO.findById(product.getSellerId());
+                    if (seller != null) {
+                        ClientHandler sellerHandler = SessionManager.getInstance().getHandlerByUsername(seller.getUsername());
+                        if (sellerHandler != null) {
+                            Map<String, String> notifyMsg = new HashMap<>();
+                            notifyMsg.put("message", "Sản phẩm '" + product.getName() + "' của bạn đã bị từ chối!");
+                            sellerHandler.sendMessage(XmlMessageParser.serialize(MessageType.SUCCESS, notifyMsg));
+                        }
+                    }
+                }
             } else {
                 sendError("Không thể từ chối sản phẩm!");
             }
